@@ -106,6 +106,7 @@ from modules.utils.auth import (
     check_authorization,
     get_user_role,
     is_admin_user,
+    is_super_admin_user,
     INSUFFICIENT_PERMISSIONS_MESSAGE
 )
 from modules.handlers.core.start import show_main_menu
@@ -126,6 +127,7 @@ def require_authorization(func):
         user_id = update.effective_user.id
         context.user_data['role'] = get_user_role(user_id)
         context.user_data['is_admin'] = is_admin_user(user_id)
+        context.user_data['is_superadmin'] = is_super_admin_user(user_id)
 
         return await func(update, context, *args, **kwargs)
     return wrapper
@@ -756,7 +758,9 @@ async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard, users_data = await SelectionHelper.get_users_selection_keyboard(
             callback_prefix="select_user",
             include_back=True,
-            max_per_row=1
+            max_per_row=1,
+            filter_tag_by_telegram_id=str(update.effective_user.id),
+            is_superadmin=context.user_data.get('is_superadmin', False)
         )
         
         if not users_data:
@@ -913,7 +917,9 @@ async def handle_user_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 callback_prefix="select_user",
                 include_back=True,
                 max_per_row=1,
-                page=page
+                page=page,
+                filter_tag_by_telegram_id=str(update.effective_user.id),
+                is_superadmin=context.user_data.get('is_superadmin', False)
             )
             
             context.user_data["users_data"] = users_data
@@ -1695,7 +1701,19 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     field = fields[index]
     field_name = USER_FIELDS[field]
-    
+
+    # Автозаполнение поля tag Telegram ID создателя и пропуск ввода
+    if field == "tag":
+        try:
+            creator_id = str(update.effective_user.id)
+            context.user_data.setdefault("create_user", {})["tag"] = creator_id
+            logger.info(f"Auto-set tag to creator Telegram ID: {creator_id}")
+        except Exception as e:
+            logger.warning(f"Could not auto-set tag from creator Telegram ID: {e}")
+        # Переходим к следующему полю без запроса ввода
+        context.user_data["current_field_index"] += 1
+        return await ask_for_field(update, context)
+
     # Проверяем, используется ли шаблон
     using_template = context.user_data.get("using_template", False)
     current_value = context.user_data["create_user"].get(field)
@@ -2449,6 +2467,15 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Set default reset day if not provided
     if "resetDay" not in user_data:
         user_data["resetDay"] = 1
+
+    # Автозаполнение тега Telegram ID создателя, если не задан вручную
+    if not user_data.get("tag"):
+        try:
+            creator_id = str(update.effective_user.id)
+            user_data["tag"] = creator_id
+            logger.info(f"Defaulting user tag to creator Telegram ID: {creator_id}")
+        except Exception as e:
+            logger.warning(f"Could not set default tag from creator Telegram ID: {e}")
 
     # Если установлен лимит устройств (hwidDeviceLimit), убедимся, что стратегия сброса трафика установлена правильно
     if "hwidDeviceLimit" in user_data and user_data.get("hwidDeviceLimit", 0) > 0:

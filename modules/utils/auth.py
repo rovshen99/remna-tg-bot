@@ -19,6 +19,10 @@ def is_admin_user(user_id: int) -> bool:
     """Check whether the user has admin role."""
     return get_user_role(user_id) == "admin"
 
+def is_super_admin_user(user_id: int) -> bool:
+    """Check whether the user has superadmin role."""
+    return get_user_role(user_id) == "superadmin"
+
 def is_operator_user(user_id: int) -> bool:
     """Check whether the user has operator role."""
     return get_user_role(user_id) == "operator"
@@ -69,7 +73,7 @@ def check_roles(allowed_roles: Iterable[str]):
 
     return decorator
 
-check_admin = check_roles({"admin"})
+check_admin = check_roles({"admin", "superadmin"})
 check_operator_or_admin = check_roles({"admin", "operator"})
 
 def check_authorization(user):

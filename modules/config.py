@@ -56,7 +56,21 @@ API_TOKEN = os.getenv("REMNAWAVE_API_TOKEN")
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# Parse admin user IDs with detailed logging
+# Parse super admin and admin user IDs with detailed logging
+super_admin_ids_str = os.getenv("SUPER_ADMIN_USER_IDS", "")
+logger.info(f"Raw SUPER_ADMIN_USER_IDS from env: '{super_admin_ids_str}'")
+
+SUPER_ADMIN_USER_IDS = []
+if super_admin_ids_str:
+    try:
+        SUPER_ADMIN_USER_IDS = [int(id.strip()) for id in super_admin_ids_str.split(",") if id.strip()]
+        logger.info(f"Parsed SUPER_ADMIN_USER_IDS: {SUPER_ADMIN_USER_IDS}")
+    except ValueError as e:
+        logger.error(f"Error parsing SUPER_ADMIN_USER_IDS: {e}")
+        SUPER_ADMIN_USER_IDS = []
+else:
+    logger.info("SUPER_ADMIN_USER_IDS is empty or not set")
+
 admin_ids_str = os.getenv("ADMIN_USER_IDS", "")
 logger.info(f"Raw ADMIN_USER_IDS from env: '{admin_ids_str}'")
 
@@ -85,9 +99,15 @@ if operator_ids_str:
 else:
     logger.info("OPERATOR_USER_IDS is empty or not set")
 
-def _build_user_roles(admin_ids, operator_ids):
+def _build_user_roles(super_admin_ids, admin_ids, operator_ids):
     roles = {}
+    # Highest priority: superadmins
+    for sa_id in super_admin_ids:
+        roles[sa_id] = "superadmin"
+    # Next: admins (do not override superadmin)
     for admin_id in admin_ids:
+        if admin_id in roles:
+            continue
         roles[admin_id] = "admin"
     for operator_id in operator_ids:
         if operator_id in roles:
@@ -95,7 +115,7 @@ def _build_user_roles(admin_ids, operator_ids):
         roles[operator_id] = "operator"
     return roles
 
-USER_ROLES = _build_user_roles(ADMIN_USER_IDS, OPERATOR_USER_IDS)
+USER_ROLES = _build_user_roles(SUPER_ADMIN_USER_IDS, ADMIN_USER_IDS, OPERATOR_USER_IDS)
 AUTHORIZED_USER_IDS = list(USER_ROLES.keys())
 
 if USER_ROLES:

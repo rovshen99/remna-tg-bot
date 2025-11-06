@@ -18,11 +18,13 @@ class SelectionHelper:
     
     @staticmethod
     async def get_users_selection_keyboard(
-        page: int = 0, 
+        page: int = 0,
         per_page: int = 8,
         callback_prefix: str = "select_user",
         include_back: bool = True,
-        max_per_row: int = 1
+        max_per_row: int = 1,
+        filter_tag_by_telegram_id: Optional[str] = None,
+        is_superadmin: bool = False,
     ) -> Tuple[InlineKeyboardMarkup, Dict]:
         """
         Create keyboard for user selection with pagination
@@ -37,6 +39,14 @@ class SelectionHelper:
                 return InlineKeyboardMarkup(keyboard), {}
             
             users = response["users"]
+
+            # Optional filtering: show only users whose tag equals creator Telegram ID
+            if filter_tag_by_telegram_id and not is_superadmin:
+                try:
+                    filter_value = str(filter_tag_by_telegram_id)
+                    users = [u for u in users if str(u.get("tag") or "") == filter_value]
+                except Exception as e:
+                    logger.warning(f"Failed to filter users by tag={filter_tag_by_telegram_id}: {e}")
             total_users = len(users)
             total_pages = (total_users + per_page - 1) // per_page
             

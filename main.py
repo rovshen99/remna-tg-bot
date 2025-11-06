@@ -98,7 +98,8 @@ def main():
     api_token = os.getenv("REMNAWAVE_API_TOKEN")
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     admin_user_ids = [int(id) for id in os.getenv("ADMIN_USER_IDS", "").split(",") if id]
-    
+    superadmin_user_ids = [int(id) for id in os.getenv("SUPERADMIN_USER_IDS", "").split(",") if id]
+
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
     logger.info(f"Log level: {os.getenv('LOG_LEVEL', 'ERROR')}")
     logger.info(f"Admin user IDs: {admin_user_ids}")

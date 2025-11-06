@@ -5,7 +5,7 @@ import logging
 from modules.config import MAIN_MENU, USER_MENU, NODE_MENU, STATS_MENU, HOST_MENU, INBOUND_MENU, BULK_MENU, CREATE_USER, CREATE_USER_FIELD, SELECTING_USER
 
 logger = logging.getLogger(__name__)
-from modules.utils.auth import check_authorization, get_user_role, is_admin_user
+from modules.utils.auth import check_authorization, get_user_role, is_admin_user, is_super_admin_user
 from modules.handlers.users import show_users_menu, start_create_user, show_user_details
 from modules.handlers.nodes import show_nodes_menu
 from modules.handlers.stats import show_stats_menu
@@ -32,12 +32,14 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
     role = get_user_role(update.effective_user.id)
     is_admin = is_admin_user(update.effective_user.id)
+    is_superadmin = is_super_admin_user(update.effective_user.id)
     context.user_data['role'] = role
     context.user_data['is_admin'] = is_admin
+    context.user_data['is_superadmin'] = is_superadmin
 
     data = query.data
     admin_only_actions = {"bulk", "menu_bulk", "create_user", "menu_create_user"}
-    if data in admin_only_actions and not is_admin:
+    if data in admin_only_actions and not (is_admin or is_superadmin):
         await query.answer("Этот раздел доступен только администраторам.", show_alert=True)
         return MAIN_MENU
 
@@ -107,6 +109,5 @@ async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Показываем главное меню со статистикой
     await show_main_menu(update, context)
     return MAIN_MENU
-
 
 
