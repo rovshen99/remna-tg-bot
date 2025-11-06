@@ -113,6 +113,8 @@ from modules.handlers.core.start import show_main_menu
 
 logger = logging.getLogger(__name__)
 
+TEMPLATES_ENABLED = False
+
 # Декоратор для проверки авторизации
 def require_authorization(func):
     """Декоратор для проверки авторизации пользователя"""
@@ -1586,34 +1588,39 @@ async def start_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_template_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show template selection menu"""
-    from modules.utils.presets import get_template_names
-    
     message = "🎯 *Создание пользователя*\n\n"
-    message += "Выберите готовый шаблон или создайте пользователя вручную:\n\n"
-    message += "📋 *Готовые шаблоны* содержат все необходимые настройки\n"
-    message += "⚙️ *Ручное создание* позволяет настроить каждое поле отдельно"
     
-    # Создаем кнопки для шаблонов
-    keyboard = []
-    templates = get_template_names()
-    
-    # Добавляем кнопки шаблонов по 2 в ряду
-    for i in range(0, len(templates), 2):
-        row = []
-        for j in range(2):
-            if i + j < len(templates):
-                template_name = templates[i + j]
-                row.append(InlineKeyboardButton(
-                    template_name, 
-                    callback_data=f"template_{template_name}"
-                ))
-        keyboard.append(row)
-    
-    # Добавляем кнопки управления
-    keyboard.extend([
-        [InlineKeyboardButton("⚙️ Создать вручную", callback_data="create_manual")],
-        [InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")]
-    ])
+    if TEMPLATES_ENABLED:
+        from modules.utils.presets import get_template_names
+        
+        message += "Выберите готовый шаблон или создайте пользователя вручную:\n\n"
+        message += "📋 *Готовые шаблоны* содержат все необходимые настройки\n"
+        message += "⚙️ *Ручное создание* позволяет настроить каждое поле отдельно"
+        
+        keyboard = []
+        templates = get_template_names()
+
+        for i in range(0, len(templates), 2):
+            row = []
+            for j in range(2):
+                if i + j < len(templates):
+                    template_name = templates[i + j]
+                    row.append(InlineKeyboardButton(
+                        template_name, 
+                        callback_data=f"template_{template_name}"
+                    ))
+            keyboard.append(row)
+        
+        keyboard.extend([
+            [InlineKeyboardButton("⚙️ Создать вручную", callback_data="create_manual")],
+            [InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")]
+        ])
+    else:
+        message += "Сейчас доступно только ручное создание пользователя.\n"
+        keyboard = [
+            [InlineKeyboardButton("⚙️ Создать вручную", callback_data="create_manual")],
+            [InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")]
+        ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
