@@ -2,7 +2,19 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 import logging
 
-from modules.config import MAIN_MENU, USER_MENU, NODE_MENU, STATS_MENU, HOST_MENU, INBOUND_MENU, BULK_MENU, CREATE_USER, CREATE_USER_FIELD, SELECTING_USER
+from modules.config import (
+    MAIN_MENU,
+    USER_MENU,
+    NODE_MENU,
+    STATS_MENU,
+    HOST_MENU,
+    INBOUND_MENU,
+    BULK_MENU,
+    CREATE_USER,
+    CREATE_USER_FIELD,
+    SELECTING_USER,
+    INBOUNDS_MENU_ENABLED,
+)
 
 logger = logging.getLogger(__name__)
 from modules.utils.auth import check_authorization, get_user_role, is_admin_user, is_super_admin_user
@@ -46,11 +58,11 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
         "menu_stats",
         "hosts",
         "menu_hosts",
-        "inbounds",
-        "menu_inbounds",
         "bulk",
         "menu_bulk",
     }
+    if INBOUNDS_MENU_ENABLED:
+        superadmin_sections.update({"inbounds", "menu_inbounds"})
     admin_sections = {"create_user", "menu_create_user"}
 
     if data in superadmin_sections and not is_superadmin:
@@ -127,4 +139,16 @@ async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Показываем главное меню со статистикой
     await show_main_menu(update, context)
     return MAIN_MENU
-
+    inbounds_callbacks = {
+        "inbounds",
+        "menu_inbounds",
+        "list_inbounds",
+        "list_full_inbounds",
+        "list_inbounds_stats",
+        "filter_inbounds",
+        "refresh_inbounds",
+        "debug_users",
+    }
+    if not INBOUNDS_MENU_ENABLED and data in inbounds_callbacks:
+        await query.answer("Раздел Inbounds временно отключен.", show_alert=True)
+        return MAIN_MENU

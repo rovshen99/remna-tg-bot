@@ -9,6 +9,7 @@ from modules.config import (
     DASHBOARD_SHOW_TRAFFIC_STATS,
     DASHBOARD_SHOW_UPTIME,
     MAIN_MENU_TITLE,
+    INBOUNDS_MENU_ENABLED,
 )
 from modules.utils.auth import (
     check_operator_or_admin,
@@ -95,12 +96,6 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     InlineKeyboardButton(
                         "🌐 Управление хостами",
                         callback_data="hosts",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🔌 Управление Inbounds",
-                        callback_data="inbounds",
                     )
                 ],
                 [
@@ -464,3 +459,13 @@ async def get_basic_system_stats():
     except Exception as e:
         logger.error(f"Error getting basic system stats: {e}")
         return "📈 *Статистика временно недоступна*\n"
+        if INBOUNDS_MENU_ENABLED:
+            keyboard.insert(
+                4,
+                [
+                    InlineKeyboardButton(
+                        "🔌 Управление Inbounds",
+                        callback_data="inbounds",
+                    )
+                ],
+            )
