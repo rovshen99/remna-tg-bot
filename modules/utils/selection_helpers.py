@@ -25,6 +25,7 @@ class SelectionHelper:
         max_per_row: int = 1,
         filter_tag_by_telegram_id: Optional[str] = None,
         is_superadmin: bool = False,
+        status_filter: Optional[str] = None,
     ) -> Tuple[InlineKeyboardMarkup, Dict]:
         """
         Create keyboard for user selection with pagination
@@ -47,6 +48,16 @@ class SelectionHelper:
                     users = [u for u in users if str(u.get("tag") or "") == filter_value]
                 except Exception as e:
                     logger.warning(f"Failed to filter users by tag={filter_tag_by_telegram_id}: {e}")
+            if status_filter:
+                users = [
+                    u for u in users
+                    if str(u.get("status", "")).upper() == status_filter.upper()
+                ]
+            if not users:
+                keyboard = []
+                if include_back:
+                    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
+                return InlineKeyboardMarkup(keyboard), {}
             total_users = len(users)
             total_pages = (total_users + per_page - 1) // per_page
             

@@ -17,6 +17,7 @@ from modules.config import (
 class CallbackData:
     # Основные действия
     LIST_USERS = "list_users"
+    LIST_EXPIRED_USERS = "list_expired_users"
     SEARCH_USER = "search_user"
     CREATE_USER = "create_user"
     BACK_TO_MAIN = "back_to_main"
@@ -377,6 +378,7 @@ class KeyboardBuilder:
         """Создает главное меню пользователей"""
         rows = [
             [InlineKeyboardButton("📋 Список всех пользователей", callback_data=CallbackData.LIST_USERS)],
+            [InlineKeyboardButton("⌛ Просроченные пользователи", callback_data=CallbackData.LIST_EXPIRED_USERS)],
             [InlineKeyboardButton("🔍 Поиск пользователя", callback_data=CallbackData.SEARCH_USER)]
         ]
         if is_admin:
@@ -685,6 +687,10 @@ async def handle_users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == CallbackData.LIST_USERS:
         await list_users(update, context)
         return SELECTING_USER
+    
+    elif data == CallbackData.LIST_EXPIRED_USERS:
+        await list_expired_users(update, context)
+        return SELECTING_USER
 
     elif data == CallbackData.SEARCH_USER:
         back_markup = KeyboardBuilder.create_back_button()
@@ -799,6 +805,54 @@ async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.callback_query.edit_message_text(
             f"❌ Ошибка при загрузке списка пользователей: {str(e)}",
+            reply_markup=reply_markup
+        )
+        return USER_MENU
+
+async def list_expired_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List only expired users"""
+    await update.callback_query.edit_message_text("⌛ Загрузка списка просроченных пользователей...")
+
+    try:
+        keyboard, users_data = await SelectionHelper.get_users_selection_keyboard(
+            callback_prefix="select_user",
+            include_back=True,
+            max_per_row=1,
+            filter_tag_by_telegram_id=str(update.effective_user.id),
+            is_superadmin=context.user_data.get('is_superadmin', False),
+            status_filter="EXPIRED"
+        )
+
+        if not users_data:
+            keyboard = [[InlineKeyboardButton("🔙 Назад в меню", callback_data="back_to_users")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await update.callback_query.edit_message_text(
+                "✅ Просроченных пользователей не найдено.",
+                reply_markup=reply_markup
+            )
+            return USER_MENU
+
+        context.user_data["users_data"] = users_data
+
+        message = f"⌛ *Просроченные пользователи* ({len(users_data)} шт.)\n\n"
+        message += "Выберите пользователя для просмотра подробностей:"
+
+        await update.callback_query.edit_message_text(
+            text=message,
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+
+        return SELECTING_USER
+
+    except Exception as e:
+        logger.error(f"Error in list_expired_users: {e}")
+        keyboard = [[InlineKeyboardButton("🔙 Назад в меню", callback_data="back_to_users")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.callback_query.edit_message_text(
+            f"❌ Ошибка при загрузке просроченных пользователей: {str(e)}",
             reply_markup=reply_markup
         )
         return USER_MENU
