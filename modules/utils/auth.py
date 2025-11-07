@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 NOT_AUTHORIZED_MESSAGE = "Вам недоступен этот бот. Обратитесь к администратору."
-INSUFFICIENT_PERMISSIONS_MESSAGE = "Действие доступно только администраторам."
+INSUFFICIENT_PERMISSIONS_MESSAGE = "Недостаточно прав для выполнения действия."
 
 def get_user_role(user_id: int) -> Optional[str]:
     """Return configured role for the given user id."""
@@ -74,7 +74,8 @@ def check_roles(allowed_roles: Iterable[str]):
     return decorator
 
 check_admin = check_roles({"admin", "superadmin"})
-check_operator_or_admin = check_roles({"admin", "operator"})
+check_superadmin = check_roles({"superadmin"})
+check_operator_or_admin = check_roles({"admin", "operator", "superadmin"})
 
 def check_authorization(user):
     """Check if user is authorized (without decorator)."""

@@ -7,15 +7,33 @@ from modules.api.config_profiles import ConfigProfileAPI
 from modules.api.hosts import HostAPI
 from modules.utils.formatters import format_host_details
 from modules.handlers.core.start import show_main_menu
+from modules.utils.auth import check_superadmin
 
 logger = logging.getLogger(__name__)
 
+
+@check_superadmin
 async def show_hosts_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show hosts menu"""
     keyboard = [
-        [InlineKeyboardButton("📋 Список всех хостов", callback_data="list_hosts")],
-        [InlineKeyboardButton("➕ Создать хост", callback_data="create_host")],
-        [InlineKeyboardButton("🔙 Назад в главное меню", callback_data="back_to_main")]
+        [
+            InlineKeyboardButton(
+                "📋 Список всех хостов",
+                callback_data="list_hosts",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "➕ Создать хост",
+                callback_data="create_host",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔙 Назад в главное меню",
+                callback_data="back_to_main",
+            )
+        ],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -28,6 +46,8 @@ async def show_hosts_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+
+@check_superadmin
 async def handle_hosts_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle hosts menu selection"""
     query = update.callback_query
@@ -119,6 +139,9 @@ async def handle_hosts_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return HOST_MENU
 
     return HOST_PROFILE
+
+
+@check_superadmin
 async def start_create_host(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start host creation wizard: choose config profile"""
     query = update.callback_query
@@ -141,6 +164,8 @@ async def start_create_host(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return HOST_INBOUND
 
+
+@check_superadmin
 async def choose_host_inbound(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Step 2 - choose inbound from selected profile"""
     query = update.callback_query
@@ -165,6 +190,8 @@ async def choose_host_inbound(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     return HOST_PARAMS
 
+
+@check_superadmin
 async def input_host_params(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Step 3 - ask for host params (remark, address, port)"""
     query = update.callback_query
@@ -180,6 +207,8 @@ async def input_host_params(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["host_create_wait_input"] = True
     return HOST_PARAMS
 
+
+@check_superadmin
 async def handle_host_creation_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text input for host creation params (remark/address/port then SNI)"""
     text = (update.message.text or "").strip()
@@ -236,6 +265,8 @@ async def handle_host_creation_text(update: Update, context: ContextTypes.DEFAUL
 
     return HOST_MENU
 
+
+@check_superadmin
 async def list_hosts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List all hosts"""
     await update.callback_query.edit_message_text("🌐 Загрузка списка хостов...")
@@ -284,6 +315,8 @@ async def list_hosts(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return HOST_MENU
 
+
+@check_superadmin
 async def show_host_details(update: Update, context: ContextTypes.DEFAULT_TYPE, uuid):
     """Show host details"""
     host = await HostAPI.get_host_by_uuid(uuid)
@@ -322,6 +355,8 @@ async def show_host_details(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     
     return HOST_MENU
 
+
+@check_superadmin
 async def enable_host(update: Update, context: ContextTypes.DEFAULT_TYPE, uuid):
     """Enable host"""
     await update.callback_query.answer()
@@ -335,6 +370,8 @@ async def enable_host(update: Update, context: ContextTypes.DEFAULT_TYPE, uuid):
     
     return await show_host_details(update, context, uuid)
 
+
+@check_superadmin
 async def disable_host(update: Update, context: ContextTypes.DEFAULT_TYPE, uuid):
     """Disable host"""
     await update.callback_query.answer()
@@ -348,6 +385,8 @@ async def disable_host(update: Update, context: ContextTypes.DEFAULT_TYPE, uuid)
     
     return await show_host_details(update, context, uuid)
 
+
+@check_superadmin
 async def start_edit_host(update: Update, context: ContextTypes.DEFAULT_TYPE, uuid: str):
     """Start editing a host"""
     try:
@@ -415,6 +454,8 @@ async def start_edit_host(update: Update, context: ContextTypes.DEFAULT_TYPE, uu
         )
         return HOST_MENU
 
+
+@check_superadmin
 async def handle_host_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle host edit menu selection"""
     query = update.callback_query
@@ -453,6 +494,8 @@ async def handle_host_edit_menu(update: Update, context: ContextTypes.DEFAULT_TY
     
     return EDIT_HOST
 
+
+@check_superadmin
 async def start_edit_host_field(update: Update, context: ContextTypes.DEFAULT_TYPE, uuid: str, field: str):
     """Start editing a specific host field"""
     try:
@@ -562,6 +605,8 @@ async def start_edit_host_field(update: Update, context: ContextTypes.DEFAULT_TY
         await update.callback_query.edit_message_text("❌ Ошибка при подготовке редактирования.")
         return EDIT_HOST
 
+
+@check_superadmin
 async def handle_host_field_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle input for host field editing"""
     try:
@@ -689,6 +734,8 @@ async def handle_host_field_input(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("❌ Произошла ошибка при обработке ввода.")
         return EDIT_HOST
 
+
+@check_superadmin
 async def handle_cancel_host_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle canceling host edit"""
     query = update.callback_query
@@ -705,5 +752,3 @@ async def handle_cancel_host_edit(update: Update, context: ContextTypes.DEFAULT_
     else:
         await show_hosts_menu(update, context)
         return HOST_MENU
-
-

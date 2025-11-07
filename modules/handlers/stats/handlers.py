@@ -5,18 +5,46 @@ from telegram.ext import ContextTypes
 from modules.config import MAIN_MENU, STATS_MENU
 from modules.api.system import SystemAPI
 from modules.api.nodes import NodeAPI
-from modules.utils.formatters import format_system_stats, format_bandwidth_stats, format_bytes, format_nodes_stats
+from modules.utils.formatters import (
+    format_system_stats,
+    format_bandwidth_stats,
+    format_bytes,
+    format_nodes_stats,
+)
 from modules.handlers.core.start import show_main_menu
+from modules.utils.auth import check_superadmin
 
 logger = logging.getLogger(__name__)
 
+
+@check_superadmin
 async def show_stats_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show statistics menu"""
     keyboard = [
-        [InlineKeyboardButton("📊 Общая статистика", callback_data="system_stats")],
-        [InlineKeyboardButton("📈 Статистика трафика", callback_data="bandwidth_stats")],
-        [InlineKeyboardButton("🖥️ Статистика серверов", callback_data="nodes_stats")],
-        [InlineKeyboardButton("🔙 Назад в главное меню", callback_data="back_to_main")]
+        [
+            InlineKeyboardButton(
+                "📊 Общая статистика",
+                callback_data="system_stats",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📈 Статистика трафика",
+                callback_data="bandwidth_stats",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🖥️ Статистика серверов",
+                callback_data="nodes_stats",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔙 Назад в главное меню",
+                callback_data="back_to_main",
+            )
+        ],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -29,6 +57,8 @@ async def show_stats_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+
+@check_superadmin
 async def handle_stats_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle statistics menu selection"""
     query = update.callback_query
@@ -55,6 +85,8 @@ async def handle_stats_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return STATS_MENU
 
+
+@check_superadmin
 async def show_system_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show system statistics"""
     await update.callback_query.edit_message_text("📊 Загрузка статистики системы...")
@@ -101,6 +133,8 @@ async def show_system_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return STATS_MENU
 
+
+@check_superadmin
 async def show_bandwidth_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show bandwidth statistics"""
     await update.callback_query.edit_message_text("📈 Загрузка статистики трафика...")
@@ -134,6 +168,8 @@ async def show_bandwidth_stats(update: Update, context: ContextTypes.DEFAULT_TYP
 
     return STATS_MENU
 
+
+@check_superadmin
 async def show_nodes_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show nodes statistics"""
     query = update.callback_query

@@ -1,14 +1,20 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from modules.config import (
-    MAIN_MENU, DASHBOARD_SHOW_SYSTEM_STATS, DASHBOARD_SHOW_SERVER_INFO,
-    DASHBOARD_SHOW_USERS_COUNT, DASHBOARD_SHOW_NODES_COUNT, 
-    DASHBOARD_SHOW_TRAFFIC_STATS, DASHBOARD_SHOW_UPTIME
+    MAIN_MENU,
+    DASHBOARD_SHOW_SYSTEM_STATS,
+    DASHBOARD_SHOW_SERVER_INFO,
+    DASHBOARD_SHOW_USERS_COUNT,
+    DASHBOARD_SHOW_NODES_COUNT,
+    DASHBOARD_SHOW_TRAFFIC_STATS,
+    DASHBOARD_SHOW_UPTIME,
+    MAIN_MENU_TITLE,
 )
 from modules.utils.auth import (
     check_operator_or_admin,
     get_user_role,
-    is_admin_user
+    is_admin_user,
+    is_super_admin_user,
 )
 from modules.api.users import UserAPI
 from modules.api.nodes import NodeAPI
@@ -20,7 +26,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-ROLE_DISPLAY = {"admin": "Администратор", "operator": "Оператор"}
+ROLE_DISPLAY = {
+    "admin": "Администратор",
+    "operator": "Оператор",
+    "superadmin": "Суперадминистратор",
+}
 
 @check_operator_or_admin
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -31,32 +41,106 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show main menu with system statistics"""
     user = update.effective_user or (update.callback_query.from_user if update.callback_query else None)
-    role = get_user_role(user.id) if user else None
-    context.user_data['role'] = role
-    is_admin = is_admin_user(user.id) if user else False
+    stored_role = context.user_data.get("role")
+    stored_is_admin = context.user_data.get("is_admin")
+    stored_is_superadmin = context.user_data.get("is_superadmin")
+
+    if user:
+        role = stored_role if stored_role is not None else get_user_role(user.id)
+        is_admin = stored_is_admin if stored_is_admin is not None else is_admin_user(user.id)
+        is_superadmin = (
+            stored_is_superadmin
+            if stored_is_superadmin is not None
+            else is_super_admin_user(user.id)
+        )
+    else:
+        role = None
+        is_admin = False
+        is_superadmin = False
+
+    can_manage_users = is_admin or is_superadmin
+    context.user_data["role"] = role
+    context.user_data["is_admin"] = is_admin
+    context.user_data["is_superadmin"] = is_superadmin
     current_language = get_user_language(context)
-    language_label = SUPPORTED_LANGUAGES.get(current_language, SUPPORTED_LANGUAGES.get('ru', 'Русский'))
+    language_label = SUPPORTED_LANGUAGES.get(
+        current_language, SUPPORTED_LANGUAGES.get("ru", "Русский")
+    )
 
     keyboard = [
-        [InlineKeyboardButton("👥 Управление пользователями", callback_data="users")],
-        [InlineKeyboardButton("🖥️ Управление серверами", callback_data="nodes")],
-        [InlineKeyboardButton("📊 Статистика системы", callback_data="stats")],
-        [InlineKeyboardButton("🌐 Управление хостами", callback_data="hosts")],
-        [InlineKeyboardButton("🔌 Управление Inbounds", callback_data="inbounds")],
-        [InlineKeyboardButton("🌐 Язык бота", callback_data=LANGUAGE_MENU_CALLBACK)]
+        [
+            InlineKeyboardButton(
+                "👥 Управление пользователями",
+                callback_data="users",
+            )
+        ]
     ]
 
-    if is_admin:
-        keyboard.append([InlineKeyboardButton("🔄 Массовые операции", callback_data="bulk")])
-        keyboard.append([InlineKeyboardButton("➕ Создать пользователя", callback_data="create_user")])
+    if is_superadmin:
+        keyboard.extend(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🖥️ Управление серверами",
+                        callback_data="nodes",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "📊 Статистика системы",
+                        callback_data="stats",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🌐 Управление хостами",
+                        callback_data="hosts",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔌 Управление Inbounds",
+                        callback_data="inbounds",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔄 Массовые операции",
+                        callback_data="bulk",
+                    )
+                ],
+            ]
+        )
+
+    if can_manage_users:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "➕ Создать пользователя",
+                    callback_data="create_user",
+                )
+            ]
+        )
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                "🌐 Язык бота",
+                callback_data=LANGUAGE_MENU_CALLBACK,
+            )
+        ]
+    )
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # Получаем статистику системы
-    stats_text = await get_system_stats()
+    # Получаем статистику системы только для суперадминов
+    stats_text = ""
+    if is_superadmin:
+        stats_text = await get_system_stats()
     
-    message = "🎛️ *Главное меню Remnawave Admin*\n\n"
-    message += stats_text + "\n"
+    message = f"🎛️ *Главное меню {MAIN_MENU_TITLE}*\n\n"
+    if stats_text:
+        message += stats_text + "\n"
     message += f"🌐 Текущий язык: {language_label}\n\n"
     message += "Выберите раздел для управления:"
 
@@ -380,5 +464,3 @@ async def get_basic_system_stats():
     except Exception as e:
         logger.error(f"Error getting basic system stats: {e}")
         return "📈 *Статистика временно недоступна*\n"
-
-

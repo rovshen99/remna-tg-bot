@@ -7,17 +7,45 @@ from modules.api.bulk import BulkAPI
 from modules.api.users import UserAPI
 from modules.utils.selection_helpers import SelectionHelper
 from modules.handlers.core.start import show_main_menu
+from modules.utils.auth import check_superadmin
 
 logger = logging.getLogger(__name__)
 
+
+@check_superadmin
 async def show_bulk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show bulk operations menu"""
     keyboard = [
-        [InlineKeyboardButton("🔄 Сбросить трафик всем", callback_data="bulk_reset_all_traffic")],
-        [InlineKeyboardButton("❌ Удалить неактивных", callback_data="bulk_delete_inactive")],
-        [InlineKeyboardButton("❌ Удалить истекших", callback_data="bulk_delete_expired")],
-        [InlineKeyboardButton("🔄 Массовое обновление", callback_data="bulk_update_all")],
-        [InlineKeyboardButton("🔙 Назад в главное меню", callback_data="back_to_main")]
+        [
+            InlineKeyboardButton(
+                "🔄 Сбросить трафик всем",
+                callback_data="bulk_reset_all_traffic",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "❌ Удалить неактивных",
+                callback_data="bulk_delete_inactive",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "❌ Удалить истекших",
+                callback_data="bulk_delete_expired",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔄 Массовое обновление",
+                callback_data="bulk_update_all",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔙 Назад в главное меню",
+                callback_data="back_to_main",
+            )
+        ],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -32,6 +60,8 @@ async def show_bulk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return BULK_MENU
 
+
+@check_superadmin
 async def handle_bulk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle bulk operations menu selection"""
     query = update.callback_query
@@ -43,8 +73,14 @@ async def handle_bulk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Confirm reset all traffic
         keyboard = [
             [
-                InlineKeyboardButton("✅ Да, сбросить всем", callback_data="confirm_reset_all_traffic"),
-                InlineKeyboardButton("❌ Отмена", callback_data="back_to_bulk")
+                InlineKeyboardButton(
+                    "✅ Да, сбросить всем",
+                    callback_data="confirm_reset_all_traffic",
+                ),
+                InlineKeyboardButton(
+                    "❌ Отмена",
+                    callback_data="back_to_bulk",
+                ),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -60,8 +96,14 @@ async def handle_bulk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Confirm delete inactive
         keyboard = [
             [
-                InlineKeyboardButton("✅ Да, удалить неактивных", callback_data="confirm_delete_inactive"),
-                InlineKeyboardButton("❌ Отмена", callback_data="back_to_bulk")
+                InlineKeyboardButton(
+                    "✅ Да, удалить неактивных",
+                    callback_data="confirm_delete_inactive",
+                ),
+                InlineKeyboardButton(
+                    "❌ Отмена",
+                    callback_data="back_to_bulk",
+                ),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -77,8 +119,14 @@ async def handle_bulk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Confirm delete expired
         keyboard = [
             [
-                InlineKeyboardButton("✅ Да, удалить истекших", callback_data="confirm_delete_expired"),
-                InlineKeyboardButton("❌ Отмена", callback_data="back_to_bulk")
+                InlineKeyboardButton(
+                    "✅ Да, удалить истекших",
+                    callback_data="confirm_delete_expired",
+                ),
+                InlineKeyboardButton(
+                    "❌ Отмена",
+                    callback_data="back_to_bulk",
+                ),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -108,6 +156,8 @@ async def handle_bulk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return BULK_MENU
 
+
+@check_superadmin
 async def handle_bulk_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle bulk operation confirmation"""
     query = update.callback_query
@@ -125,7 +175,14 @@ async def handle_bulk_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
             message = "❌ Ошибка при сбросе трафика."
         
         # Add back button
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_bulk")]]
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "🔙 Назад",
+                    callback_data="back_to_bulk",
+                )
+            ]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(
@@ -145,7 +202,14 @@ async def handle_bulk_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
             message = "❌ Ошибка при удалении пользователей."
         
         # Add back button
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_bulk")]]
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "🔙 Назад",
+                    callback_data="back_to_bulk",
+                )
+            ]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(
@@ -180,5 +244,3 @@ async def handle_bulk_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
         return BULK_MENU
 
     return BULK_MENU
-
-

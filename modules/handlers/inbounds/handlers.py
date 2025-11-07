@@ -11,6 +11,7 @@ from modules.api.nodes import NodeAPI
 from modules.utils.formatters import format_inbound_details, escape_markdown
 from modules.utils.selection_helpers import SelectionHelper
 from modules.handlers.core.start import show_main_menu
+from modules.utils.auth import check_superadmin
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,8 @@ class InboundConstants:
         INACTIVE = "❌"
         LOADING = "⏳"
 
+
+@check_superadmin
 async def show_inbounds_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show enhanced inbounds menu with statistics"""
     try:
@@ -117,6 +120,8 @@ async def show_inbounds_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parse_mode="Markdown"
         )
 
+
+@check_superadmin
 async def handle_inbounds_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle enhanced inbounds menu selection"""
     query = update.callback_query
@@ -207,6 +212,8 @@ async def handle_inbounds_menu(update: Update, context: ContextTypes.DEFAULT_TYP
 
     return INBOUND_MENU
 
+
+@check_superadmin
 async def debug_user_structure(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Debug function to understand user data structure"""
     await update.callback_query.edit_message_text("🔍 Анализ структуры данных пользователей...")
@@ -292,6 +299,8 @@ async def debug_user_structure(update: Update, context: ContextTypes.DEFAULT_TYP
     
     return INBOUND_MENU
 
+
+@check_superadmin
 async def show_inbounds_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show detailed statistics for all inbounds"""
     await update.callback_query.edit_message_text(InboundConstants.Messages.LOADING)
@@ -375,6 +384,8 @@ async def show_inbounds_statistics(update: Update, context: ContextTypes.DEFAULT
 
     return INBOUND_MENU
 
+
+@check_superadmin
 async def show_inbounds_filters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show filtering options for inbounds"""
     try:
@@ -439,6 +450,8 @@ async def show_inbounds_filters(update: Update, context: ContextTypes.DEFAULT_TY
     
     return INBOUND_MENU
 
+
+@check_superadmin
 async def handle_inbound_action(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str, uuid: str):
     """Handle specific inbound actions (config, users, nodes, stats)"""
     try:
@@ -478,6 +491,8 @@ async def handle_inbound_action(update: Update, context: ContextTypes.DEFAULT_TY
 
     return INBOUND_MENU
 
+
+@check_superadmin
 async def show_inbound_config(update: Update, context: ContextTypes.DEFAULT_TYPE, inbound: Dict[str, Any]):
     """Show inbound configuration details"""
     message = f"⚙️ *Конфигурация Inbound*\n\n"
@@ -516,6 +531,8 @@ async def show_inbound_config(update: Update, context: ContextTypes.DEFAULT_TYPE
         parse_mode="Markdown"
     )
 
+
+@check_superadmin
 async def show_inbound_users(update: Update, context: ContextTypes.DEFAULT_TYPE, inbound: Dict[str, Any]):
     """Show online count for inbound (без списка пользователей)"""
     from datetime import datetime
@@ -574,6 +591,8 @@ async def show_inbound_users(update: Update, context: ContextTypes.DEFAULT_TYPE,
             logger.error(f"Error updating message: {e}")
             await update.callback_query.answer("❌ Ошибка обновления", show_alert=True)
 
+
+@check_superadmin
 async def show_inbound_nodes(update: Update, context: ContextTypes.DEFAULT_TYPE, inbound: Dict[str, Any]):
     """Show nodes associated with inbound"""
     message = f"🖥️ *Серверы Inbound*\n\n"
@@ -613,6 +632,8 @@ async def show_inbound_nodes(update: Update, context: ContextTypes.DEFAULT_TYPE,
         parse_mode="Markdown"
     )
 
+
+@check_superadmin
 async def show_inbound_stats(update: Update, context: ContextTypes.DEFAULT_TYPE, inbound: Dict[str, Any]):
     """Show detailed statistics for specific inbound"""
     message = f"📊 *Статистика Inbound*\n\n"
@@ -671,6 +692,8 @@ async def show_inbound_stats(update: Update, context: ContextTypes.DEFAULT_TYPE,
         parse_mode="Markdown"
     )
 
+
+@check_superadmin
 async def list_inbounds(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List all inbounds with enhanced display"""
     await update.callback_query.edit_message_text(InboundConstants.Messages.LOADING)
@@ -733,6 +756,8 @@ async def list_inbounds(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return INBOUND_MENU
 
+
+@check_superadmin
 async def list_full_inbounds(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List all inbounds with enhanced full details display"""
     await update.callback_query.edit_message_text(InboundConstants.Messages.LOADING)
@@ -831,6 +856,8 @@ async def list_full_inbounds(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     return INBOUND_MENU
 
+
+@check_superadmin
 async def show_inbound_details(update: Update, context: ContextTypes.DEFAULT_TYPE, uuid):
     """Show enhanced inbound details with action buttons"""
     try:
@@ -922,6 +949,8 @@ async def show_inbound_details(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # v208: массовые операции с inbound недоступны, удалены вспомогательные обработчики
 
+
+@check_superadmin
 async def handle_inbound_pagination(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int):
     """Handle pagination for inbound list"""
     try:
@@ -976,6 +1005,8 @@ async def handle_inbound_pagination(update: Update, context: ContextTypes.DEFAUL
 
     return INBOUND_MENU
 
+
+@check_superadmin
 async def handle_full_inbound_pagination(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int):
     """Handle pagination for full inbound list"""
     try:
@@ -1037,5 +1068,3 @@ async def handle_full_inbound_pagination(update: Update, context: ContextTypes.D
         )
 
     return INBOUND_MENU
-
-

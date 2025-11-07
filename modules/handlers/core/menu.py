@@ -38,9 +38,27 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data['is_superadmin'] = is_superadmin
 
     data = query.data
-    admin_only_actions = {"bulk", "menu_bulk", "create_user", "menu_create_user"}
-    if data in admin_only_actions and not (is_admin or is_superadmin):
-        await query.answer("Этот раздел доступен только администраторам.", show_alert=True)
+    can_manage_users = is_admin or is_superadmin
+    superadmin_sections = {
+        "nodes",
+        "menu_nodes",
+        "stats",
+        "menu_stats",
+        "hosts",
+        "menu_hosts",
+        "inbounds",
+        "menu_inbounds",
+        "bulk",
+        "menu_bulk",
+    }
+    admin_sections = {"create_user", "menu_create_user"}
+
+    if data in superadmin_sections and not is_superadmin:
+        await query.answer("Этот раздел доступен только суперадминам.", show_alert=True)
+        return MAIN_MENU
+
+    if data in admin_sections and not can_manage_users:
+        await query.answer("Недостаточно прав для управления пользователями.", show_alert=True)
         return MAIN_MENU
 
     logger.info(f"=== MENU SELECTION HANDLER ===")
@@ -109,5 +127,4 @@ async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Показываем главное меню со статистикой
     await show_main_menu(update, context)
     return MAIN_MENU
-
 

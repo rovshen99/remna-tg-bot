@@ -649,7 +649,11 @@ class DataValidators:
 @log_user_action("show_users_menu")
 async def show_users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show users menu"""
-    reply_markup = KeyboardBuilder.create_main_menu(context.user_data.get('is_admin', False))
+    has_user_access = (
+        context.user_data.get('is_admin', False)
+        or context.user_data.get('is_superadmin', False)
+    )
+    reply_markup = KeyboardBuilder.create_main_menu(has_user_access)
 
     message = (
         "👥 *Управление пользователями*\n\n"
@@ -672,7 +676,6 @@ async def handle_users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     data = query.data
-    is_admin = context.user_data.get('is_admin', False)
 
     try:
         logger.debug(f"handle_user_selection received callback data: {data}")
@@ -1006,7 +1009,15 @@ async def show_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         logger.error(f"Error formatting user details (safe): {e}")
         message = f"👤 Пользователь: {user.get('username','')}\n🆔 UUID: {user.get('uuid','')}\n📊 Статус: {user.get('status','')}"
 
-    keyboard = SelectionHelper.create_user_info_keyboard(uuid, action_prefix="user_action", is_admin=context.user_data.get('is_admin', False))
+    can_manage_user = (
+        context.user_data.get('is_admin', False)
+        or context.user_data.get('is_superadmin', False)
+    )
+    keyboard = SelectionHelper.create_user_info_keyboard(
+        uuid,
+        action_prefix="user_action",
+        is_admin=can_manage_user
+    )
 
     try:
         await update.callback_query.edit_message_text(
@@ -1038,7 +1049,10 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
 
     data = query.data
-    is_admin = context.user_data.get('is_admin', False)
+    has_user_access = (
+        context.user_data.get('is_admin', False)
+        or context.user_data.get('is_superadmin', False)
+    )
 
     # Handle new SelectionHelper callback patterns
     if data.startswith("user_action_"):
@@ -1046,7 +1060,7 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if len(action_parts) >= 4:
             action = action_parts[2]
             admin_only_actions = {"edit", "disable", "enable", "reset", "revoke", "delete", "hwid"}
-            if not is_admin and action in admin_only_actions:
+            if not has_user_access and action in admin_only_actions:
                 await query.answer(INSUFFICIENT_PERMISSIONS_MESSAGE, show_alert=True)
                 return SELECTING_USER
 
@@ -1134,8 +1148,18 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await confirm_delete_user(update, context, uuid)
                 return CONFIRM_ACTION
 
-    admin_only_prefixes = ("disable_", "enable_", "reset_", "revoke_", "delete_", "edit_", "add_hwid_", "del_hwid_", "confirm_del_hwid_")
-    if not is_admin and data.startswith(admin_only_prefixes):
+    admin_only_prefixes = (
+        "disable_",
+        "enable_",
+        "reset_",
+        "revoke_",
+        "delete_",
+        "edit_",
+        "add_hwid_",
+        "del_hwid_",
+        "confirm_del_hwid_",
+    )
+    if not has_user_access and data.startswith(admin_only_prefixes):
         await query.answer(INSUFFICIENT_PERMISSIONS_MESSAGE, show_alert=True)
         return SELECTING_USER
 
@@ -3006,7 +3030,6 @@ async def handle_edit_field_selection(update: Update, context: ContextTypes.DEFA
     await query.answer()
     
     data = query.data
-    is_admin = context.user_data.get('is_admin', False)
 
     if data.startswith("edit_field_"):
         field = data[11:]  # убираем "edit_field_"

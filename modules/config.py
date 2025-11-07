@@ -55,9 +55,12 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://remnawave:3000/api")
 API_TOKEN = os.getenv("REMNAWAVE_API_TOKEN")
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+MAIN_MENU_TITLE = os.getenv("MAIN_MENU_TITLE", "Remnawave Admin")
 
 # Parse super admin and admin user IDs with detailed logging
-super_admin_ids_str = os.getenv("SUPER_ADMIN_USER_IDS", "")
+super_admin_ids_str = os.getenv("SUPER_ADMIN_USER_IDS")
+if not super_admin_ids_str:
+    super_admin_ids_str = os.getenv("SUPERADMIN_USER_IDS", "")
 logger.info(f"Raw SUPER_ADMIN_USER_IDS from env: '{super_admin_ids_str}'")
 
 SUPER_ADMIN_USER_IDS = []
