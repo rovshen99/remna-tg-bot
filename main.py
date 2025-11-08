@@ -81,12 +81,20 @@ logger.error("Error logging enabled")
 sys.stdout.flush()
 sys.stderr.flush()
 
+from telegram import BotCommand
 from telegram.ext import Application, MessageHandler, CallbackQueryHandler, filters
 
 # Import modules
 from modules.handlers.core.conversation import create_conversation_handler
 from modules import localization  # noqa: F401 - ensure localization patches are loaded
 from modules.utils import admin_store
+
+
+async def _set_bot_commands(application: Application):
+    commands = [
+        BotCommand("start", "Открыть главное меню"),
+    ]
+    await application.bot.set_my_commands(commands)
 
 
 def main():
@@ -127,7 +135,7 @@ def main():
     logger.info("Loaded %d admins from database", len(admin_store.list_admins()))
     # Create the Application
     logger.info("Creating Telegram Application...")
-    application = Application.builder().token(bot_token).build()
+    application = Application.builder().token(bot_token).post_init(_set_bot_commands).build()
     logger.info("Telegram Application created successfully")
     
     # Cache cleanup will be handled automatically by the cache TTL mechanism
@@ -187,4 +195,3 @@ if __name__ == '__main__':
         pass  # Graceful shutdown
     except Exception as e:
         logger.error(f"Critical error in main: {e}", exc_info=True)
-
