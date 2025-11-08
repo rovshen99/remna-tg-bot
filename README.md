@@ -73,8 +73,8 @@ python main.py
 - `TELEGRAM_BOT_TOKEN` — токен Telegram-бота
 - `API_BASE_URL` — базовый URL API Remnawave (например, `https://panel.example.com/api`)
 - `REMNAWAVE_API_TOKEN` — токен API (если используется авторизация по токену)
+- `SUPER_ADMIN_USER_IDS` — список суперадминов через запятую (они управляют остальными ролями)
 - `OPERATOR_USER_IDS` — список операторов с правами чтения (например, `789012345`)
-- `ADMIN_USER_IDS` — список ID админов через запятую (например, `123,456`)
 
 Производительность/интерфейс:
 - `DASHBOARD_SHOW_SYSTEM_STATS` (true/false)
@@ -85,6 +85,10 @@ python main.py
 - `DASHBOARD_SHOW_UPTIME` (true/false)
 - `ENABLE_PARTIAL_SEARCH` (true/false)
 - `SEARCH_MIN_LENGTH` (число)
+- `MAIN_MENU_TITLE` — кастомный заголовок главного меню
+- `ADMIN_DB_PATH` — путь к SQLite, где бот хранит список админов (по умолчанию `data/admins.db`)
+
+> Суперадмины задаются через `.env`, а список обычных админов хранится в SQLite и редактируется через меню бота.
 
 
 ## Использование
@@ -99,4 +103,3 @@ python main.py
 MIT — подробности в файле [LICENSE](LICENSE).
   
 Обновлено: 29 сентября 2025
-

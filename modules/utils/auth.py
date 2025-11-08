@@ -1,7 +1,8 @@
 from functools import wraps
 from typing import Iterable, Optional
 
-from modules.config import USER_ROLES
+from modules.config import SUPER_ADMIN_USER_IDS, OPERATOR_USER_IDS
+from modules.utils import admin_store
 from telegram import Update, User
 from telegram.ext import ContextTypes, ConversationHandler
 import logging
@@ -13,7 +14,14 @@ INSUFFICIENT_PERMISSIONS_MESSAGE = "Недостаточно прав для в�
 
 def get_user_role(user_id: int) -> Optional[str]:
     """Return configured role for the given user id."""
-    return USER_ROLES.get(int(user_id))
+    user_id = int(user_id)
+    if user_id in SUPER_ADMIN_USER_IDS:
+        return "superadmin"
+    if admin_store.is_admin(user_id):
+        return "admin"
+    if user_id in OPERATOR_USER_IDS:
+        return "operator"
+    return None
 
 def is_admin_user(user_id: int) -> bool:
     """Check whether the user has admin role."""

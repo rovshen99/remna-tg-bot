@@ -86,6 +86,7 @@ from telegram.ext import Application, MessageHandler, CallbackQueryHandler, filt
 # Import modules
 from modules.handlers.core.conversation import create_conversation_handler
 from modules import localization  # noqa: F401 - ensure localization patches are loaded
+from modules.utils import admin_store
 
 
 def main():
@@ -97,12 +98,11 @@ def main():
     # Check if required environment variables are set
     api_token = os.getenv("REMNAWAVE_API_TOKEN")
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    admin_user_ids = [int(id) for id in os.getenv("ADMIN_USER_IDS", "").split(",") if id]
-    superadmin_user_ids = [int(id) for id in os.getenv("SUPERADMIN_USER_IDS", "").split(",") if id]
+    superadmin_user_ids = [int(id) for id in os.getenv("SUPER_ADMIN_USER_IDS", os.getenv("SUPERADMIN_USER_IDS", "")).split(",") if id]
 
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'unknown')}")
     logger.info(f"Log level: {os.getenv('LOG_LEVEL', 'ERROR')}")
-    logger.info(f"Admin user IDs: {admin_user_ids}")
+    logger.info(f"Super admin user IDs: {superadmin_user_ids}")
     
     # Force flush to ensure logs are written
     sys.stdout.flush()
@@ -118,9 +118,13 @@ def main():
         logger.error("TELEGRAM_BOT_TOKEN environment variable is not set")
         return
 
-    if not admin_user_ids:
-        logger.error("ADMIN_USER_IDS environment variable is not set. No users will be able to use the bot.")
+    if not superadmin_user_ids:
+        logger.error("SUPER_ADMIN_USER_IDS environment variable is not set. Configure at least one superadmin.")
         return
+    
+    # Ensure admin database initialized
+    admin_store.init_db()
+    logger.info("Loaded %d admins from database", len(admin_store.list_admins()))
     # Create the Application
     logger.info("Creating Telegram Application...")
     application = Application.builder().token(bot_token).build()
@@ -183,5 +187,4 @@ if __name__ == '__main__':
         pass  # Graceful shutdown
     except Exception as e:
         logger.error(f"Critical error in main: {e}", exc_info=True)
-
 

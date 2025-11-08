@@ -17,7 +17,7 @@ from modules.config import (
     CREATE_USER, CREATE_USER_FIELD, BULK_CONFIRM, 
     EDIT_NODE, EDIT_NODE_FIELD, EDIT_HOST, EDIT_HOST_FIELD, NODE_PORT,
     CREATE_NODE, NODE_NAME, NODE_ADDRESS, SELECT_INBOUNDS, CREATE_HOST, HOST_PROFILE, HOST_INBOUND, HOST_PARAMS,
-    ADMIN_USER_IDS
+    ADMIN_MENU_STATE, ADMIN_WAITING_INPUT
 )
 from modules.utils.auth import check_authorization
 
@@ -40,6 +40,7 @@ from modules.handlers.hosts import (
 )
 from modules.handlers.inbounds import handle_inbounds_menu
 from modules.handlers.bulk import handle_bulk_menu, handle_bulk_confirm
+from modules.handlers.admins import show_admins_menu, handle_admins_menu, handle_admin_input
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,14 @@ def create_conversation_handler():
             HOST_PARAMS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_host_creation_text),
                 CallbackQueryHandler(handle_hosts_menu)
+            ],
+            ADMIN_MENU_STATE: [
+                CallbackQueryHandler(handle_admins_menu),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_input),
+            ],
+            ADMIN_WAITING_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_admin_input),
+                CallbackQueryHandler(handle_admins_menu),
             ],
             INBOUND_MENU: [
                 CallbackQueryHandler(handle_inbounds_menu)
@@ -184,5 +193,3 @@ def create_conversation_handler():
         per_user=True,
         per_message=False
     )
-
-

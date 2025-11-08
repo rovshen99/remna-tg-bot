@@ -74,8 +74,8 @@ Required:
 - `TELEGRAM_BOT_TOKEN` — Telegram bot token
 - `API_BASE_URL` — base Remnawave API URL (e.g. `https://panel.example.com/api`)
 - `REMNAWAVE_API_TOKEN` — API token (when using token-based auth)
+- `SUPER_ADMIN_USER_IDS` — comma-separated list of super admins (full access)
 - `OPERATOR_USER_IDS` — list of operator IDs with read access (e.g. `789012345`)
-- `ADMIN_USER_IDS` — comma-separated admin IDs (e.g. `123,456`)
 
 Performance / UI tuning:
 - `DASHBOARD_SHOW_SYSTEM_STATS` (true/false)
@@ -86,6 +86,10 @@ Performance / UI tuning:
 - `DASHBOARD_SHOW_UPTIME` (true/false)
 - `ENABLE_PARTIAL_SEARCH` (true/false)
 - `SEARCH_MIN_LENGTH` (integer)
+- `MAIN_MENU_TITLE` — custom label for the main menu header
+- `ADMIN_DB_PATH` — SQLite file used to store admin accounts (`data/admins.db` by default)
+
+> Super admins are defined via `.env`. Regular admins are stored in SQLite and can be added/removed from the Telegram bot menu in production.
 
 ## Usage
 - Start the bot and send `/start`.

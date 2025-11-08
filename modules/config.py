@@ -58,10 +58,7 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 MAIN_MENU_TITLE = os.getenv("MAIN_MENU_TITLE", "Remnawave Admin")
 INBOUNDS_MENU_ENABLED = os.getenv("INBOUNDS_MENU_ENABLED", "false").lower() == "true"
 
-# Parse super admin and admin user IDs with detailed logging
-super_admin_ids_str = os.getenv("SUPER_ADMIN_USER_IDS")
-if not super_admin_ids_str:
-    super_admin_ids_str = os.getenv("SUPERADMIN_USER_IDS", "")
+super_admin_ids_str = os.getenv("SUPER_ADMIN_USER_IDS") or os.getenv("SUPERADMIN_USER_IDS", "")
 logger.info(f"Raw SUPER_ADMIN_USER_IDS from env: '{super_admin_ids_str}'")
 
 SUPER_ADMIN_USER_IDS = []
@@ -73,21 +70,7 @@ if super_admin_ids_str:
         logger.error(f"Error parsing SUPER_ADMIN_USER_IDS: {e}")
         SUPER_ADMIN_USER_IDS = []
 else:
-    logger.info("SUPER_ADMIN_USER_IDS is empty or not set")
-
-admin_ids_str = os.getenv("ADMIN_USER_IDS", "")
-logger.info(f"Raw ADMIN_USER_IDS from env: '{admin_ids_str}'")
-
-ADMIN_USER_IDS = []
-if admin_ids_str:
-    try:
-        ADMIN_USER_IDS = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
-        logger.info(f"Parsed ADMIN_USER_IDS: {ADMIN_USER_IDS}")
-    except ValueError as e:
-        logger.error(f"Error parsing ADMIN_USER_IDS: {e}")
-        ADMIN_USER_IDS = []
-else:
-    logger.warning("ADMIN_USER_IDS is empty or not set!")
+    logger.warning("SUPER_ADMIN_USER_IDS is empty or not set!")
 
 operator_ids_str = os.getenv("OPERATOR_USER_IDS", "")
 logger.info(f"Raw OPERATOR_USER_IDS from env: '{operator_ids_str}'")
@@ -103,29 +86,7 @@ if operator_ids_str:
 else:
     logger.info("OPERATOR_USER_IDS is empty or not set")
 
-def _build_user_roles(super_admin_ids, admin_ids, operator_ids):
-    roles = {}
-    # Highest priority: superadmins
-    for sa_id in super_admin_ids:
-        roles[sa_id] = "superadmin"
-    # Next: admins (do not override superadmin)
-    for admin_id in admin_ids:
-        if admin_id in roles:
-            continue
-        roles[admin_id] = "admin"
-    for operator_id in operator_ids:
-        if operator_id in roles:
-            continue
-        roles[operator_id] = "operator"
-    return roles
-
-USER_ROLES = _build_user_roles(SUPER_ADMIN_USER_IDS, ADMIN_USER_IDS, OPERATOR_USER_IDS)
-AUTHORIZED_USER_IDS = list(USER_ROLES.keys())
-
-if USER_ROLES:
-    logger.info(f"Configured user roles: {USER_ROLES}")
-else:
-    logger.warning("No user roles configured. Bot will deny all requests.")
+ADMIN_DB_PATH = os.getenv("ADMIN_DB_PATH", os.path.join("data", "admins.db"))
 
 # Conversation states
 MAIN_MENU, USER_MENU, NODE_MENU, STATS_MENU, HOST_MENU, INBOUND_MENU = range(6)
@@ -135,9 +96,9 @@ CREATE_USER, CREATE_USER_FIELD = range(12, 14)
 BULK_MENU, BULK_ACTION, BULK_CONFIRM = range(14, 17)
 EDIT_NODE, EDIT_NODE_FIELD = range(17, 19)
 EDIT_HOST, EDIT_HOST_FIELD = range(19, 21)
-# Steps for host creation wizard
-CREATE_HOST, HOST_PROFILE, HOST_INBOUND, HOST_PARAMS = range(27, 31)
 CREATE_NODE, NODE_NAME, NODE_ADDRESS, NODE_PORT, NODE_TLS, SELECT_INBOUNDS = range(21, 27)
+CREATE_HOST, HOST_PROFILE, HOST_INBOUND, HOST_PARAMS = range(27, 31)
+ADMIN_MENU_STATE, ADMIN_WAITING_INPUT = range(31, 33)
 
 # User creation fields
 USER_FIELDS = {

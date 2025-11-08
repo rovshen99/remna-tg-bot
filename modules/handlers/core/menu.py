@@ -58,6 +58,8 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
         "menu_stats",
         "hosts",
         "menu_hosts",
+        "admins",
+        "menu_admins",
         "bulk",
         "menu_bulk",
     }
@@ -93,6 +95,10 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
     elif data == "hosts" or data == "menu_hosts":
         await show_hosts_menu(update, context)
         return HOST_MENU
+
+    elif data == "admins" or data == "menu_admins":
+        from modules.handlers.admins import show_admins_menu
+        return await show_admins_menu(update, context)
 
     elif data == "inbounds" or data == "menu_inbounds":
         await show_inbounds_menu(update, context)

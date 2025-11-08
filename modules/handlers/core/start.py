@@ -100,6 +100,12 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ],
                 [
                     InlineKeyboardButton(
+                        "👑 Управление диллерами",
+                        callback_data="admins",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
                         "🔄 Массовые операции",
                         callback_data="bulk",
                     )
