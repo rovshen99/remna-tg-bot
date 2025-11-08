@@ -88,6 +88,10 @@ Performance / UI tuning:
 - `SEARCH_MIN_LENGTH` (integer)
 - `MAIN_MENU_TITLE` — custom label for the main menu header
 - `ADMIN_DB_PATH` — SQLite file used to store admin accounts (`data/admins.db` by default)
+- `GOOGLE_SERVICE_ACCOUNT_FILE` — path to Google service account JSON (optional)
+- `GOOGLE_OAUTH_CLIENT_SECRET_FILE` — desktop client JSON if you prefer OAuth
+- `GOOGLE_OAUTH_TOKEN_FILE` — user OAuth token JSON generated via `scripts/gdrive_oauth_setup.py`
+- `GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID` — Drive folder ID where each user gets a `{username}-{shortUuid}.txt` file with their links
 
 > Super admins are defined via `.env`. Regular admins are stored in SQLite and can be added/removed from the Telegram bot menu in production.
 

@@ -110,6 +110,12 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         callback_data="bulk",
                     )
                 ],
+                [
+                    InlineKeyboardButton(
+                        "📄 Обновить Google-файлы",
+                        callback_data="export_subscriptions",
+                    )
+                ],
             ]
         )
 

@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 from modules.api.client import RemnaAPI
 import re
 
@@ -6,6 +7,20 @@ logger = logging.getLogger(__name__)
 
 class UserAPI:
     """API client for user operations"""
+    
+    @staticmethod
+    def _extract_subscriptions(response):
+        """Normalize subscription responses into a list"""
+        if not response:
+            return []
+        if isinstance(response, dict):
+            if "subscriptions" in response:
+                return response["subscriptions"] or []
+            if "response" in response and isinstance(response["response"], dict):
+                return response["response"].get("subscriptions") or []
+        elif isinstance(response, list):
+            return response
+        return []
     
     @staticmethod
     async def get_all_users():
@@ -377,3 +392,65 @@ class UserAPI:
                 'stats': {'ACTIVE': 0, 'DISABLED': 0, 'LIMITED': 0, 'EXPIRED': 0},
                 'total_traffic': 0
             }
+    @staticmethod
+    async def get_all_subscriptions(size: int = 500, start: int = 0):
+        """Fetch subscriptions batch"""
+        params = {"size": size, "start": start}
+        return await RemnaAPI.get("subscriptions", params=params)
+
+    @staticmethod
+    async def get_all_subscriptions_list() -> list:
+        """Fetch all subscriptions handling pagination"""
+        all_subs = []
+        start = 0
+        size = 500
+
+        while True:
+            response = await UserAPI.get_all_subscriptions(size=size, start=start)
+            subs = UserAPI._extract_subscriptions(response)
+
+            if not subs:
+                break
+
+            all_subs.extend(subs)
+
+            if len(subs) < size:
+                break
+            start += size
+
+        logger.info("Retrieved %d subscriptions total", len(all_subs))
+        return all_subs
+
+    @staticmethod
+    async def find_subscription(subscription_url: Optional[str] = None, username: Optional[str] = None):
+        start = 0
+        size = 500
+        while True:
+            response = await UserAPI.get_all_subscriptions(size=size, start=start)
+            subs = UserAPI._extract_subscriptions(response)
+
+            if not subs:
+                break
+
+            for item in subs:
+                if subscription_url and item.get("subscriptionUrl") == subscription_url:
+                    return item
+                user = item.get("user") or {}
+                if username and user.get("username") == username:
+                    return item
+
+            if len(subs) < size:
+                break
+            start += size
+
+        return None
+
+    @staticmethod
+    async def get_subscription_by_short_uuid(short_uuid: str):
+        """Fetch subscription info for a specific user via short UUID"""
+        if not short_uuid:
+            return None
+        response = await RemnaAPI.get(f"subscriptions/by-short-uuid/{short_uuid}")
+        if response and isinstance(response, dict) and "response" in response:
+            return response.get("response")
+        return response

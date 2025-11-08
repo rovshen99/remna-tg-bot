@@ -102,6 +102,7 @@ class Messages:
 from modules.api.users import UserAPI
 from modules.utils.formatters import format_bytes, format_user_details, format_user_details_safe, escape_markdown, safe_edit_message
 from modules.utils.selection_helpers import SelectionHelper
+from modules.utils.google_drive import store_subscription_links
 from modules.utils.auth import (
     check_admin,
     check_authorization,
@@ -2593,7 +2594,29 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
             message += f"🔑 Короткий UUID: `{result['shortUuid']}`\n"
         # v208 может не возвращать subscriptionUuid — показываем только URL, если есть
         if result.get('subscriptionUrl'):
-            message += f"\n🔗 URL подписки: `{result['subscriptionUrl']}`\n"
+            subscription_url = result['subscriptionUrl']
+            message += f"\n🔗 URL подписки: `{subscription_url}`\n"
+
+            subscription_entry = None
+            short_uuid = result.get('shortUuid')
+            if short_uuid:
+                subscription_entry = await UserAPI.get_subscription_by_short_uuid(short_uuid)
+
+            if not subscription_entry:
+                subscription_entry = await UserAPI.find_subscription(
+                    subscription_url=subscription_url,
+                    username=result.get('username')
+                )
+
+            links = []
+            if subscription_entry:
+                links = subscription_entry.get('links') or []
+
+            await store_subscription_links(
+                username=result.get('username'),
+                short_uuid=result.get('shortUuid'),
+                links=links,
+            )
         # Clear creation context now that user is created
         for key in ("create_user", "create_user_fields", "current_field_index", "using_template", "search_type", "waiting_for"):
             context.user_data.pop(key, None)

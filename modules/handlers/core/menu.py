@@ -62,6 +62,9 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
         "menu_admins",
         "bulk",
         "menu_bulk",
+        "export_subscriptions",
+        "confirm_export_subscriptions",
+        "cancel_export_subscriptions",
     }
     if INBOUNDS_MENU_ENABLED:
         superadmin_sections.update({"inbounds", "menu_inbounds"})
@@ -100,6 +103,25 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
         from modules.handlers.admins import show_admins_menu
         return await show_admins_menu(update, context)
 
+    elif data == "export_subscriptions":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Обновить", callback_data="confirm_export_subscriptions")],
+            [InlineKeyboardButton("❌ Отмена", callback_data="cancel_export_subscriptions")],
+        ])
+        await query.edit_message_text(
+            "Обновление файлов Google Drive может занять несколько минут. Продолжить?",
+            reply_markup=keyboard,
+        )
+        return MAIN_MENU
+
+    elif data == "confirm_export_subscriptions":
+        from modules.handlers.admins import _export_subscriptions
+        return await _export_subscriptions(update, context, return_to_admin=False)
+
+    elif data == "cancel_export_subscriptions":
+        await show_main_menu(update, context)
+        return MAIN_MENU
+
     elif data == "inbounds" or data == "menu_inbounds":
         await show_inbounds_menu(update, context)
         return INBOUND_MENU
@@ -133,18 +155,6 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
     elif data.startswith(LANGUAGE_SELECT_PREFIX):
         return await handle_language_selection(update, context)
 
-    return MAIN_MENU
-
-async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Return to main menu with authorization check"""
-    # Проверяем авторизацию
-    if not check_authorization(update.effective_user):
-        await update.callback_query.answer("⛔ Вы не авторизованы для использования этого бота.", show_alert=True)
-        return ConversationHandler.END
-    
-    # Показываем главное меню со статистикой
-    await show_main_menu(update, context)
-    return MAIN_MENU
     inbounds_callbacks = {
         "inbounds",
         "menu_inbounds",
@@ -158,3 +168,16 @@ async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not INBOUNDS_MENU_ENABLED and data in inbounds_callbacks:
         await query.answer("Раздел Inbounds временно отключен.", show_alert=True)
         return MAIN_MENU
+
+    return MAIN_MENU
+
+async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Return to main menu with authorization check"""
+    # Проверяем авторизацию
+    if not check_authorization(update.effective_user):
+        await update.callback_query.answer("⛔ Вы не авторизованы для использования этого бота.", show_alert=True)
+        return ConversationHandler.END
+    
+    # Показываем главное меню со статистикой
+    await show_main_menu(update, context)
+    return MAIN_MENU

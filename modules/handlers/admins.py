@@ -2,10 +2,19 @@ import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes, ConversationHandler
 
-from modules.config import ADMIN_MENU_STATE, ADMIN_WAITING_INPUT, SUPER_ADMIN_USER_IDS, MAIN_MENU
+from modules.config import (
+    ADMIN_MENU_STATE,
+    ADMIN_WAITING_INPUT,
+    SUPER_ADMIN_USER_IDS,
+    MAIN_MENU,
+    GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID,
+    GOOGLE_OAUTH_TOKEN_FILE,
+    GOOGLE_SERVICE_ACCOUNT_FILE,
+)
 from modules.handlers.core.start import show_main_menu
 from modules.utils import admin_store
 from modules.utils.auth import check_superadmin
+from modules.utils.google_drive import store_subscription_links
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +105,17 @@ async def handle_admins_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.edit_message_text(message, parse_mode="Markdown", reply_markup=back_markup)
         return ADMIN_WAITING_INPUT
 
+    if data == "admin_export_subs":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Начать экспорт", callback_data="admin_confirm_export")],
+            [InlineKeyboardButton("❌ Отмена", callback_data="admin_cancel_export")],
+        ])
+        await query.edit_message_text(
+            "Экспорт может занять несколько минут. Продолжить?",
+            reply_markup=keyboard,
+        )
+        return ADMIN_MENU_STATE
+
     if data.startswith("admin_remove_"):
         user_id = data.split("_")[2]
         context.user_data["remove_admin_id"] = user_id
@@ -120,12 +140,21 @@ async def handle_admins_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data.pop("remove_admin_id", None)
         return await show_admins_menu(update, context)
 
+    if data == "admin_cancel_export":
+        return await show_admins_menu(update, context)
+
+    if data == "admin_confirm_export":
+        return await _export_subscriptions(update, context, return_to_admin=True)
+
     if data.startswith("admin_confirm_remove_"):
         user_id = int(data.split("_")[3])
         removed = admin_store.remove_admin(user_id)
         message = "✅ Диллер удалён." if removed else "❌ Диллер не найден."
         await query.edit_message_text(message)
         return await show_admins_menu(update, context)
+
+    if data == "admin_export_subs":
+        return await _export_subscriptions(update, context)
 
     if data.startswith("admin_toggle_"):
         user_id = int(data.split("_")[2])
@@ -177,3 +206,64 @@ async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ADMIN_WAITING_INPUT
 
     return await show_admins_menu(update, context)
+
+@check_superadmin
+async def _export_subscriptions(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    return_to_admin: bool = True,
+):
+    from modules.api.users import UserAPI
+
+    query = update.callback_query
+    destination = show_admins_menu if return_to_admin else show_main_menu
+
+    if (
+        not GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID
+        or not (GOOGLE_SERVICE_ACCOUNT_FILE or GOOGLE_OAUTH_TOKEN_FILE)
+    ):
+        await query.edit_message_text("⚠️ Google Drive не настроен.")
+        return await destination(update, context)
+
+    await query.edit_message_text("⏳ Экспорт подписок в Google Drive...")
+
+    users_response = await UserAPI.get_all_users()
+    users = []
+    if isinstance(users_response, dict) and users_response.get("users"):
+        users = users_response["users"]
+    elif isinstance(users_response, list):
+        users = users_response
+
+    subs_list = await UserAPI.get_all_subscriptions_list()
+    subs_by_short = {}
+    subs_by_username = {}
+    for item in subs_list:
+        user_info = item.get("user", {})
+        short_uuid = user_info.get("shortUuid")
+        username = user_info.get("username")
+        if short_uuid:
+            subs_by_short[short_uuid] = item
+        if username:
+            subs_by_username[username] = item
+
+    processed_users = 0
+
+    for user in users:
+        username = user.get("username", "unknown")
+        short_uuid = user.get("shortUuid")
+        subscription = subs_by_short.get(short_uuid) if short_uuid else None
+        if not subscription:
+            subscription = subs_by_username.get(username)
+        links = []
+        if subscription:
+            links = subscription.get("links") or []
+
+        await store_subscription_links(username, short_uuid, links or [])
+        processed_users += 1
+
+    if processed_users == 0:
+        await query.edit_message_text("ℹ️ Ссылок не найдено.")
+        return await destination(update, context)
+
+    await query.edit_message_text(f"✅ Экспорт завершён. Файлов обновлено: {processed_users}")
+    return await destination(update, context)

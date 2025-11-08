@@ -1,4 +1,6 @@
 import os
+from typing import Optional
+
 from dotenv import load_dotenv
 import logging
 import json
@@ -87,6 +89,20 @@ else:
     logger.info("OPERATOR_USER_IDS is empty or not set")
 
 ADMIN_DB_PATH = os.getenv("ADMIN_DB_PATH", os.path.join("data", "admins.db"))
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+
+
+def _resolve_path(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    return value if os.path.isabs(value) else os.path.join(ROOT_DIR, value)
+
+
+GOOGLE_SERVICE_ACCOUNT_FILE = _resolve_path(os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE"))
+GOOGLE_OAUTH_TOKEN_FILE = _resolve_path(os.getenv("GOOGLE_OAUTH_TOKEN_FILE"))
+GOOGLE_OAUTH_CLIENT_SECRET_FILE = _resolve_path(os.getenv("GOOGLE_OAUTH_CLIENT_SECRET_FILE"))
+
+GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID = os.getenv("GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID")
 
 # Conversation states
 MAIN_MENU, USER_MENU, NODE_MENU, STATS_MENU, HOST_MENU, INBOUND_MENU = range(6)
