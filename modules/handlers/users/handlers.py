@@ -10,7 +10,8 @@ import asyncio
 
 from modules.config import (
     MAIN_MENU, USER_MENU, SELECTING_USER, WAITING_FOR_INPUT, CONFIRM_ACTION,
-    EDIT_USER, EDIT_FIELD, EDIT_VALUE, CREATE_USER, CREATE_USER_FIELD, USER_FIELDS
+    EDIT_USER, EDIT_FIELD, EDIT_VALUE, CREATE_USER, CREATE_USER_FIELD, USER_FIELDS,
+    ACTIVE_INTERNAL_SQUADS,
 )
 
 # Константы для callback_data
@@ -2554,6 +2555,9 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if "resetDay" not in user_data:
         user_data["resetDay"] = 1
 
+    if ACTIVE_INTERNAL_SQUADS and "activeInternalSquads" not in user_data:
+        user_data["activeInternalSquads"] = ACTIVE_INTERNAL_SQUADS
+
     # Автозаполнение тега Telegram ID создателя, если не задан вручную
     if not user_data.get("tag"):
         try:
@@ -2612,11 +2616,18 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if subscription_entry:
                 links = subscription_entry.get('links') or []
 
-            await store_subscription_links(
+            file_id = await store_subscription_links(
                 username=result.get('username'),
                 short_uuid=result.get('shortUuid'),
                 links=links,
             )
+            if file_id:
+                drive_link = f"https://drive.google.com/uc?id={file_id}&export=download"
+                try:
+                    await UserAPI.update_user(result['uuid'], {"description": drive_link})
+                    message += f"\n📁 Drive: `{drive_link}`\n"
+                except Exception as exc:
+                    logger.error("Failed to update user description with Drive link: %s", exc)
         # Clear creation context now that user is created
         for key in ("create_user", "create_user_fields", "current_field_index", "using_template", "search_type", "waiting_for"):
             context.user_data.pop(key, None)

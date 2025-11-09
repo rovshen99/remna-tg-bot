@@ -91,6 +91,7 @@ python main.py
 - `GOOGLE_OAUTH_CLIENT_SECRET_FILE` — JSON client_secret для desktop клиента (если используете OAuth)
 - `GOOGLE_OAUTH_TOKEN_FILE` — JSON с OAuth токеном пользователя (генерируется скриптом `scripts/gdrive_oauth_setup.py`)
 - `GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID` — ID папки в Google Drive, где для каждого пользователя создаётся файл `{username}-{shortUuid}.txt`
+- `ACTIVE_INTERNAL_SQUADS` — список значений через запятую, который автоматически подставляется в поле `activeInternalSquads` при создании пользователя
 
 > Суперадмины задаются через `.env`, а список обычных админов хранится в SQLite и редактируется через меню бота.
 

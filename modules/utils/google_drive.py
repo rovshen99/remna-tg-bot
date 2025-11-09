@@ -64,32 +64,43 @@ def _find_file(service, name: str):
     return files[0] if files else None
 
 
-def _write_user_file_sync(filename: str, content: str) -> None:
+def _write_user_file_sync(filename: str, content: str) -> Optional[str]:
     service = _get_service()
     if not service:
-        return
+        return None
     try:
         media = MediaIoBaseUpload(io.BytesIO(content.encode("utf-8")), mimetype="text/plain")
         existing = _find_file(service, filename)
         if existing:
             service.files().update(fileId=existing["id"], media_body=media).execute()
+            file_id = existing["id"]
         else:
             metadata = {"name": filename}
             if GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID:
                 metadata["parents"] = [GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID]
-            service.files().create(body=metadata, media_body=media).execute()
+            created = service.files().create(body=metadata, media_body=media, fields="id").execute()
+            file_id = created.get("id")
+            service.permissions().create(
+                fileId=file_id,
+                body={
+                    "type": "anyone",
+                    "role": "writer",
+                },
+            ).execute()
         logger.info("Stored subscription links in file %s", filename)
+        return file_id
     except Exception as exc:
         logger.error("Failed to store subscription file %s: %s", filename, exc)
+        return None
 
 
-async def store_subscription_links(username: Optional[str], short_uuid: Optional[str], links: List[str]) -> None:
+async def store_subscription_links(username: Optional[str], short_uuid: Optional[str], links: List[str]) -> Optional[str]:
     if (
             not GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID
             or not (GOOGLE_SERVICE_ACCOUNT_FILE or GOOGLE_OAUTH_TOKEN_FILE)
     ):
         logger.debug("Google Drive folder not configured; skipping write")
-        return
+        return None
 
     filename = f"{username or 'user'}-{short_uuid or ''}".strip("-")
     if not filename:
@@ -97,4 +108,4 @@ async def store_subscription_links(username: Optional[str], short_uuid: Optional
     filename += ".txt"
     content = "\n".join(links)
 
-    await asyncio.to_thread(_write_user_file_sync, filename, content)
+    return await asyncio.to_thread(_write_user_file_sync, filename, content)

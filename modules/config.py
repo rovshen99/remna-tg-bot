@@ -104,6 +104,9 @@ GOOGLE_OAUTH_CLIENT_SECRET_FILE = _resolve_path(os.getenv("GOOGLE_OAUTH_CLIENT_S
 
 GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID = os.getenv("GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID")
 
+active_squads_env = os.getenv("ACTIVE_INTERNAL_SQUADS", "")
+ACTIVE_INTERNAL_SQUADS = [s.strip() for s in active_squads_env.split(",") if s.strip()]
+
 # Conversation states
 MAIN_MENU, USER_MENU, NODE_MENU, STATS_MENU, HOST_MENU, INBOUND_MENU = range(6)
 SELECTING_USER, WAITING_FOR_INPUT, CONFIRM_ACTION = range(6, 9)
