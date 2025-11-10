@@ -92,6 +92,10 @@ python main.py
 - `GOOGLE_OAUTH_TOKEN_FILE` — JSON с OAuth токеном пользователя (генерируется скриптом `scripts/gdrive_oauth_setup.py`)
 - `GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID` — ID папки в Google Drive, где для каждого пользователя создаётся файл `{username}-{shortUuid}.txt`
 - `ACTIVE_INTERNAL_SQUADS` — список значений через запятую, который автоматически подставляется в поле `activeInternalSquads` при создании пользователя
+- `EXPIRATION_NOTIFICATION_ENABLED` — включает/отключает ежедневные уведомления об истекающих подписках (по умолчанию `true`)
+- `EXPIRATION_NOTIFICATION_DAYS` — за сколько дней до истечения считать подписку “скоро истекающей” (по умолчанию `3`)
+- `EXPIRATION_NOTIFICATION_TIME` — время отправки уведомлений в формате `HH:MM` (по умолчанию `09:00`)
+- `EXPIRATION_NOTIFICATION_TZ` — таймзона для расписания (например, `Europe/Moscow`, по умолчанию `UTC`)
 
 > Суперадмины задаются через `.env`, а список обычных админов хранится в SQLite и редактируется через меню бота.
 

@@ -82,12 +82,13 @@ sys.stdout.flush()
 sys.stderr.flush()
 
 from telegram import BotCommand
-from telegram.ext import Application, MessageHandler, CallbackQueryHandler, filters
+from telegram.ext import Application, MessageHandler, CallbackQueryHandler, filters, JobQueue
 
 # Import modules
 from modules.handlers.core.conversation import create_conversation_handler
 from modules import localization  # noqa: F401 - ensure localization patches are loaded
 from modules.utils import admin_store
+from modules.services.expiration_notifier import schedule_expiration_notifications
 
 
 async def _set_bot_commands(application: Application):
@@ -135,7 +136,14 @@ def main():
     logger.info("Loaded %d admins from database", len(admin_store.list_admins()))
     # Create the Application
     logger.info("Creating Telegram Application...")
-    application = Application.builder().token(bot_token).post_init(_set_bot_commands).build()
+    job_queue = JobQueue()
+    application = (
+        Application.builder()
+        .token(bot_token)
+        .post_init(_set_bot_commands)
+        .job_queue(job_queue)
+        .build()
+    )
     logger.info("Telegram Application created successfully")
     
     # Cache cleanup will be handled automatically by the cache TTL mechanism
@@ -146,6 +154,9 @@ def main():
     conv_handler = create_conversation_handler()
     application.add_handler(conv_handler, group=0)
     logger.info("Conversation handler added successfully")
+    
+    # Schedule daily expiration notifications
+    schedule_expiration_notifications(application)
     
     # Run polling with retry logic
     max_retries = 10

@@ -1853,8 +1853,8 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         else:
             keyboard = [
-                [InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")],
-                [InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")]
+                # [InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")],
+                # [InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")]
             ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2060,7 +2060,8 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message = f"Введите {field_name}:{template_info}"
 
-    keyboard = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")]]
+    if not field == 'username':
+        keyboard = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")]]
 
     # Для шаблонов добавляем кнопку "использовать значение из шаблона"
     if using_template and current_value is not None and field not in ["username"]:
@@ -2392,12 +2393,11 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
             if field == "username":
                 # Validate username format
                 if not re.match(r"^[a-zA-Z0-9_-]{6,34}$", value):
-                    keyboard = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")]]
+                    keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")]]
                     reply_markup = InlineKeyboardMarkup(keyboard)
-                    
+
                     await update.message.reply_text(
-                        "❌ Неверный формат имени пользователя. Используйте только буквы, цифры, подчеркивания и дефисы. Длина должна быть от 6 до 34 символов.",
-                        reply_markup=reply_markup,
+                        "❌ Неверный формат имени пользователя. Используйте только буквы, цифры, подчеркивания и дефисы. Длина должна быть от 6 до 34 символов.\n\nВведите имя ещё раз:",
                         parse_mode="Markdown"
                     )
                     return CREATE_USER_FIELD
@@ -2534,6 +2534,18 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
         random_username = ''.join(random.choice(characters) for _ in range(20))
         user_data["username"] = random_username
         logger.info(f"Generated random username: {random_username}")
+
+    # For regular admins (non super-admins) append their Telegram ID to username
+    creator = update.effective_user
+    if creator and is_admin_user(creator.id):
+        telegram_id_suffix = f"-{creator.id}"
+        current_username = user_data.get("username", "")
+        if current_username and not current_username.endswith(telegram_id_suffix):
+            user_data["username"] = f"{current_username}{telegram_id_suffix}"
+            logger.info(
+                "Adjusted username for admin %s: %s -> %s",
+                creator.id, current_username, user_data["username"]
+            )
 
     # Set default values for required fields if not provided
     if "trafficLimitStrategy" not in user_data:

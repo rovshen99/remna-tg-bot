@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Optional, Tuple
 
 from dotenv import load_dotenv
 import logging
@@ -106,6 +106,39 @@ GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID = os.getenv("GOOGLE_DRIVE_SUBSCRIPTIONS_FOL
 
 active_squads_env = os.getenv("ACTIVE_INTERNAL_SQUADS", "")
 ACTIVE_INTERNAL_SQUADS = [s.strip() for s in active_squads_env.split(",") if s.strip()]
+
+
+def _safe_int(value: str, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_time_pair(value: str, default: Tuple[int, int] = (9, 0)) -> Tuple[int, int]:
+    if not value:
+        return default
+    parts = value.split(":")
+    if len(parts) != 2:
+        logger.warning("Invalid time format '%s', expected HH:MM. Using default %s:%s", value, *default)
+        return default
+    try:
+        hour = max(0, min(23, int(parts[0])))
+        minute = max(0, min(59, int(parts[1])))
+        return hour, minute
+    except ValueError:
+        logger.warning("Invalid numeric time '%s'. Using default %s:%s", value, *default)
+        return default
+
+
+EXPIRATION_NOTIFICATION_ENABLED = os.getenv("EXPIRATION_NOTIFICATION_ENABLED", "true").lower() == "true"
+EXPIRATION_NOTIFICATION_DAYS = max(1, _safe_int(os.getenv("EXPIRATION_NOTIFICATION_DAYS", "3"), 3))
+_exp_time = os.getenv("EXPIRATION_NOTIFICATION_TIME", "09:00")
+(
+    EXPIRATION_NOTIFICATION_HOUR,
+    EXPIRATION_NOTIFICATION_MINUTE,
+) = _parse_time_pair(_exp_time)
+EXPIRATION_NOTIFICATION_TZ = os.getenv("EXPIRATION_NOTIFICATION_TZ", "UTC")
 
 # Conversation states
 MAIN_MENU, USER_MENU, NODE_MENU, STATS_MENU, HOST_MENU, INBOUND_MENU = range(6)
