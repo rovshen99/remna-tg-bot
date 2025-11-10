@@ -109,3 +109,25 @@ async def store_subscription_links(username: Optional[str], short_uuid: Optional
     content = "\n".join(links)
 
     return await asyncio.to_thread(_write_user_file_sync, filename, content)
+
+
+def _delete_file_sync(file_id: str) -> bool:
+    service = _get_service()
+    if not service:
+        return False
+    try:
+        service.files().delete(fileId=file_id).execute()
+        logger.info("Deleted Drive file %s", file_id)
+        return True
+    except Exception as exc:
+        logger.error("Failed to delete Drive file %s: %s", file_id, exc)
+        return False
+
+
+async def delete_drive_file(file_id: Optional[str]) -> bool:
+    if not file_id:
+        return False
+    if not (GOOGLE_SERVICE_ACCOUNT_FILE or GOOGLE_OAUTH_TOKEN_FILE):
+        logger.debug("Google Drive credentials missing; skip delete for %s", file_id)
+        return False
+    return await asyncio.to_thread(_delete_file_sync, file_id)

@@ -3,6 +3,7 @@ import logging
 import random
 import string
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse, parse_qs
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 import re
@@ -113,7 +114,7 @@ class Messages:
 from modules.api.users import UserAPI
 from modules.utils.formatters import format_bytes, format_user_details, format_user_details_safe, escape_markdown, safe_edit_message
 from modules.utils.selection_helpers import SelectionHelper
-from modules.utils.google_drive import store_subscription_links
+from modules.utils.google_drive import store_subscription_links, delete_drive_file
 from modules.utils.auth import (
     check_admin,
     check_authorization,
@@ -166,6 +167,31 @@ def _advance_field_index(context: ContextTypes.DEFAULT_TYPE, step: int = 1) -> i
     index = max(0, _get_current_field_index(context) + step)
     context.user_data["current_field_index"] = index
     return index
+
+
+def _extract_drive_file_id(description: Optional[str]) -> Optional[str]:
+    if not description:
+        return None
+    text = description.strip()
+    if text.startswith("`") and text.endswith("`"):
+        text = text[1:-1]
+    if not text:
+        return None
+    # Attempt to parse as URL
+    try:
+        parsed = urlparse(text)
+        if parsed.query:
+            params = parse_qs(parsed.query)
+            file_ids = params.get("id")
+            if file_ids:
+                return file_ids[0]
+        # Fallback to /d/<fileId>/ style URLs
+        drive_match = re.search(r"/d/([a-zA-Z0-9_-]+)", text)
+        if drive_match:
+            return drive_match.group(1)
+    except Exception as exc:
+        logger.debug("Failed to parse Drive link '%s': %s", description, exc)
+    return None
 
 
 # Декоратор для проверки авторизации
@@ -3054,6 +3080,7 @@ async def execute_user_deletion(update: Update, context: ContextTypes.DEFAULT_TY
         
         uuid = user_to_delete['uuid']
         username = user_to_delete['username']
+        drive_file_id = _extract_drive_file_id(user_to_delete.get("description"))
         
         # Show deletion in progress
         await update.callback_query.edit_message_text(
@@ -3063,6 +3090,13 @@ async def execute_user_deletion(update: Update, context: ContextTypes.DEFAULT_TY
         
         # Perform the deletion
         result = await UserAPI.delete_user(uuid)
+        drive_cleanup_note = ""
+        if result and drive_file_id:
+            deleted = await delete_drive_file(drive_file_id)
+            if deleted:
+                drive_cleanup_note = "\n📁 Файл подписки на Google Drive удален."
+            else:
+                logger.warning("Failed to delete Drive file %s for user %s", drive_file_id, uuid)
         
         # Clear stored deletion data
         context.user_data.pop("delete_user", None)
@@ -3077,11 +3111,17 @@ async def execute_user_deletion(update: Update, context: ContextTypes.DEFAULT_TY
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await update.callback_query.edit_message_text(
+            success_message = (
                 f"✅ **Пользователь успешно удален!**\n\n"
                 f"👤 Имя: `{escape_markdown(username)}`\n"
                 f"🆔 UUID: `{uuid}`\n\n"
-                f"🗑️ Все данные пользователя были удалены навсегда.",
+                f"🗑️ Все данные пользователя были удалены навсегда."
+            )
+            if drive_cleanup_note:
+                success_message += drive_cleanup_note
+            
+            await update.callback_query.edit_message_text(
+                success_message,
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
