@@ -164,6 +164,15 @@ USER_FIELDS = {
     'tag': 'Тег',
     'hwidDeviceLimit': 'Лимит устройств'
 }
+
+CREATE_USER_EXCLUDED_FIELDS = (
+    "trafficLimitStrategy",
+    "description",
+    "telegramId",
+    "email",
+    "tag",
+)
+CREATE_USER_EXCLUDED_FIELDS_SET = {field for field in CREATE_USER_EXCLUDED_FIELDS if field in USER_FIELDS}
 # Dashboard display settings - что показывать на главном экране
 DASHBOARD_SHOW_SYSTEM_STATS = os.getenv("DASHBOARD_SHOW_SYSTEM_STATS", "true").lower() == "true"
 DASHBOARD_SHOW_SERVER_INFO = os.getenv("DASHBOARD_SHOW_SERVER_INFO", "true").lower() == "true"

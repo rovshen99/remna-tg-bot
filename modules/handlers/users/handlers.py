@@ -2,16 +2,26 @@ from datetime import datetime, timedelta
 import logging
 import random
 import string
-from typing import Dict, Optional, Any
+from typing import Any, Dict, List, Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 import re
 import asyncio
 
 from modules.config import (
-    MAIN_MENU, USER_MENU, SELECTING_USER, WAITING_FOR_INPUT, CONFIRM_ACTION,
-    EDIT_USER, EDIT_FIELD, EDIT_VALUE, CREATE_USER, CREATE_USER_FIELD, USER_FIELDS,
+    MAIN_MENU,
+    USER_MENU,
+    SELECTING_USER,
+    WAITING_FOR_INPUT,
+    CONFIRM_ACTION,
+    EDIT_USER,
+    EDIT_FIELD,
+    EDIT_VALUE,
+    CREATE_USER,
+    CREATE_USER_FIELD,
+    USER_FIELDS,
     ACTIVE_INTERNAL_SQUADS,
+    CREATE_USER_EXCLUDED_FIELDS_SET,
 )
 
 # Константы для callback_data
@@ -117,6 +127,46 @@ from modules.handlers.core.start import show_main_menu
 logger = logging.getLogger(__name__)
 
 TEMPLATES_ENABLED = False
+
+
+def _filter_create_fields(fields: List[str], ensure_username: bool = True) -> List[str]:
+    """Filter out excluded fields while keeping username available."""
+    filtered: List[str] = []
+    for field in fields:
+        if field != "username" and field in CREATE_USER_EXCLUDED_FIELDS_SET:
+            continue
+        filtered.append(field)
+    if ensure_username and "username" not in filtered and "username" in USER_FIELDS:
+        filtered.insert(0, "username")
+    return filtered
+
+
+def _default_create_field_order() -> List[str]:
+    """Return a fresh list of fields respecting exclusion rules."""
+    return _filter_create_fields(list(USER_FIELDS.keys()))
+
+
+def _get_create_user_fields(context: ContextTypes.DEFAULT_TYPE) -> List[str]:
+    fields = context.user_data.get("create_user_fields")
+    if not fields:
+        fields = _default_create_field_order()
+        context.user_data["create_user_fields"] = fields
+    return fields
+
+
+def _get_current_field_index(context: ContextTypes.DEFAULT_TYPE) -> int:
+    index = context.user_data.get("current_field_index")
+    if index is None or index < 0:
+        index = 0
+        context.user_data["current_field_index"] = index
+    return index
+
+
+def _advance_field_index(context: ContextTypes.DEFAULT_TYPE, step: int = 1) -> int:
+    index = max(0, _get_current_field_index(context) + step)
+    context.user_data["current_field_index"] = index
+    return index
+
 
 # Декоратор для проверки авторизации
 def require_authorization(func):
@@ -1766,7 +1816,7 @@ async def start_template_creation(update: Update, context: ContextTypes.DEFAULT_
     
     if customize:
         # Полная настройка - проходим все поля
-        context.user_data["create_user_fields"] = list(USER_FIELDS.keys())
+        context.user_data["create_user_fields"] = _default_create_field_order()
         context.user_data["current_field_index"] = 0
     else:
         # Только имя пользователя и опциональные поля
@@ -1779,8 +1829,8 @@ async def start_template_creation(update: Update, context: ContextTypes.DEFAULT_
 
 async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ask for a field value when creating a user"""
-    fields = context.user_data["create_user_fields"]
-    index = context.user_data["current_field_index"]
+    fields = _get_create_user_fields(context)
+    index = _get_current_field_index(context)
 
     if index >= len(fields):
         # All fields collected, create the user
@@ -1798,7 +1848,7 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.warning(f"Could not auto-set tag from creator Telegram ID: {e}")
         # Переходим к следующему полю без запроса ввода
-        context.user_data["current_field_index"] += 1
+        _advance_field_index(context)
         return await ask_for_field(update, context)
 
     # Проверяем, используется ли шаблон
@@ -2121,7 +2171,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
         
         if data == "skip_field":
             # Skip this field
-            context.user_data["current_field_index"] += 1
+            _advance_field_index(context)
             await ask_for_field(update, context)
             return CREATE_USER_FIELD
         
@@ -2143,7 +2193,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
         
         elif data == "create_manual":
             # Создание вручную - используем весь список полей
-            context.user_data["create_user_fields"] = list(USER_FIELDS.keys())
+            context.user_data["create_user_fields"] = _default_create_field_order()
             context.user_data["current_field_index"] = 0
             context.user_data["using_template"] = False
             await ask_for_field(update, context)
@@ -2169,14 +2219,17 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
         
         elif data == "add_optional_fields":
             # Добавляем дополнительные поля
-            optional_fields = ["telegramId", "email", "tag", "expireAt"]
-            current_fields = context.user_data["create_user_fields"]
+            optional_fields = _filter_create_fields(
+                ["telegramId", "email", "tag", "expireAt"],
+                ensure_username=False,
+            )
+            current_fields = _get_create_user_fields(context)
             # Добавляем поля, которых еще нет
             for field in optional_fields:
                 if field not in current_fields:
                     current_fields.append(field)
             context.user_data["create_user_fields"] = current_fields
-            context.user_data["current_field_index"] += 1  # переходим к следующему полю
+            _advance_field_index(context)  # переходим к следующему полю
             await ask_for_field(update, context)
             return CREATE_USER_FIELD
         
@@ -2184,30 +2237,30 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
             # Использовать значение из шаблона для поля
             field_name = data[19:]  # убираем "use_template_value_"
             # Значение уже есть в данных пользователя из шаблона
-            context.user_data["current_field_index"] += 1
+            _advance_field_index(context)
             await ask_for_field(update, context)
             return CREATE_USER_FIELD
         
         elif data.startswith("create_field_"):
             # Handle selection for fields with predefined values
             value = data[13:]  # Берем всё, что идет после "create_field_", чтобы избежать обрезания значений
-            fields = context.user_data["create_user_fields"]
-            index = context.user_data["current_field_index"]
+            fields = _get_create_user_fields(context)
+            index = _get_current_field_index(context)
             field = fields[index]
             
             # Логирование для отладки, чтобы видеть какое значение устанавливается
             logger.info(f"Setting field {field} to value '{value}' from callback data '{data}'")
             
             context.user_data["create_user"][field] = value
-            context.user_data["current_field_index"] += 1
+            _advance_field_index(context)
             await ask_for_field(update, context)
             return CREATE_USER_FIELD
             
         elif data.startswith("create_date_"):
             # Handle selection for date presets
             date_str = data[12:] # Получаем YYYY-MM-DD из коллбэка
-            fields = context.user_data["create_user_fields"]
-            index = context.user_data["current_field_index"]
+            fields = _get_create_user_fields(context)
+            index = _get_current_field_index(context)
             field = fields[index]
             
             if field == "expireAt":
@@ -2224,7 +2277,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     )
                     
                     # Переходим к следующему полю
-                    context.user_data["current_field_index"] += 1
+                    _advance_field_index(context)
                     await ask_for_field(update, context)
                 except ValueError as e:
                     logger.error(f"Error parsing date: {e}")
@@ -2245,8 +2298,8 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                 traffic_bytes_str = data[14:]  # отрезаем префикс 'create_traffic_'
                 logger.debug(f"Extracted traffic value string: '{traffic_bytes_str}'")
                 
-                fields = context.user_data["create_user_fields"]
-                index = context.user_data["current_field_index"]
+                fields = _get_create_user_fields(context)
+                index = _get_current_field_index(context)
                 field = fields[index]
                 
                 if field == "trafficLimitBytes":
@@ -2272,7 +2325,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     )
                     
                     # Переходим к следующему полю
-                    context.user_data["current_field_index"] += 1
+                    _advance_field_index(context)
                     await ask_for_field(update, context)
             except ValueError as e:
                 logger.error(f"Error parsing traffic limit: {e}")
@@ -2298,8 +2351,8 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                 description = data[12:]  # отрезаем префикс 'create_desc_'
                 logger.debug(f"Extracted description: '{description}'")
                 
-                fields = context.user_data["create_user_fields"]
-                index = context.user_data["current_field_index"]
+                fields = _get_create_user_fields(context)
+                index = _get_current_field_index(context)
                 field = fields[index]
                 
                 if field == "description":
@@ -2312,13 +2365,15 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     )
                     
                     # Переходим к следующему полю
+                    _advance_field_index(context)
+                    await ask_for_field(update, context)
             except Exception as e:
                 logger.error(f"Unexpected error processing description template: {e}", exc_info=True)
                 await query.edit_message_text(
                     "❌ Произошла ошибка при обработке шаблона описания. Пожалуйста, введите описание вручную.",
                     parse_mode="Markdown"
                 )
-                context.user_data["current_field_index"] += 1
+                _advance_field_index(context)
                 await ask_for_field(update, context)
             
             return CREATE_USER_FIELD
@@ -2333,8 +2388,8 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                 device_limit_str = data[14:]  # отрезаем префикс 'create_device_'
                 logger.debug(f"Extracted device limit value string: '{device_limit_str}'")
                 
-                fields = context.user_data["create_user_fields"]
-                index = context.user_data["current_field_index"]
+                fields = _get_create_user_fields(context)
+                index = _get_current_field_index(context)
                 field = fields[index]
                 
                 if field == "hwidDeviceLimit":
@@ -2365,7 +2420,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     )
                     
                     # Переходим к следующему полю
-                    context.user_data["current_field_index"] += 1
+                    _advance_field_index(context)
                     await ask_for_field(update, context)
             except ValueError as e:
                 logger.error(f"Error parsing device limit: {e}")
@@ -2384,8 +2439,8 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
 
     else:  # Text input
         try:
-            fields = context.user_data["create_user_fields"]
-            index = context.user_data["current_field_index"]
+            fields = _get_create_user_fields(context)
+            index = _get_current_field_index(context)
             field = fields[index]
             value = update.message.text.strip()
             
@@ -2502,7 +2557,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                 context.user_data["create_user"]["trafficLimitStrategy"] = "NO_RESET"
                 logger.info(f"Setting trafficLimitStrategy=NO_RESET because hwidDeviceLimit={value}")
                 
-            context.user_data["current_field_index"] += 1
+            _advance_field_index(context)
             
             # Log the current state of the user creation data
             logger.debug(f"Current user creation data: {context.user_data['create_user']}")
