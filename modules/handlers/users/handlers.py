@@ -2279,7 +2279,12 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
     if query:
         await query.answer()
         data = query.data
-        
+
+        if data.startswith("view_"):
+            uuid = data.split("_", 1)[1]
+            await show_user_details(update, context, uuid)
+            return SELECTING_USER
+
         if data == "skip_field":
             # Skip this field
             _advance_field_index(context)
@@ -2770,15 +2775,19 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
     result = await UserAPI.create_user(user_data)
 
     if result:
-        keyboard = [
-            [InlineKeyboardButton("👁️ Просмотр пользователя", callback_data=f"view_{result['uuid']}")],
-            [InlineKeyboardButton("🔙 Назад в главное меню", callback_data="back_to_main")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        created_uuid = result.get('uuid')
+        if not created_uuid and isinstance(result.get('user'), dict):
+            created_uuid = result['user'].get('uuid')
+        reply_buttons = []
+        if created_uuid:
+            reply_buttons.append([InlineKeyboardButton("👁️ Просмотр пользователя", callback_data=f"view_{created_uuid}")])
+        reply_buttons.append([InlineKeyboardButton("🔙 Назад в главное меню", callback_data="back_to_main")])
+        reply_markup = InlineKeyboardMarkup(reply_buttons)
         
         message = f"✅ Пользователь успешно создан!\n\n"
         message += f"👤 Имя: {escape_markdown(result.get('username',''))}\n"
-        message += f"🆔 UUID: `{result.get('uuid','')}`\n"
+        if created_uuid:
+            message += f"🆔 UUID: `{created_uuid}`\n"
         if result.get('shortUuid'):
             message += f"🔑 Короткий UUID: `{result['shortUuid']}`\n"
         # v208 может не возвращать subscriptionUuid — показываем только URL, если есть
@@ -2806,11 +2815,11 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 short_uuid=result.get('shortUuid'),
                 links=links,
             )
-            if temp_file_id:
+            if temp_file_id and created_uuid:
                 file_id = temp_file_id
-                drive_link = f"https://drive.google.com/uc?id={temp_file_id}&export=download"
+                drive_link = f"`https://drive.google.com/uc?id={temp_file_id}&export=download`"
                 try:
-                    await UserAPI.update_user(result['uuid'], {"description": drive_link})
+                    await UserAPI.update_user(created_uuid, {"description": drive_link})
                     message += f"\n📁 Drive: `{drive_link}`\n"
                 except Exception as exc:
                     logger.error("Failed to update user description with Drive link: %s", exc)
@@ -2834,7 +2843,7 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if file_id and drive_link:
             qr_stream = _build_qr_code_payload(drive_link)
             username_md = escape_markdown(result.get('username', ''))
-            caption = f"🔳 QR-код для `{username_md}`\n`{escape_markdown(drive_link)}`"
+            caption = f"🔳 QR-код для `{username_md}`\n{escape_markdown(drive_link)}"
             target_message = update.callback_query.message if update.callback_query else update.message
             if target_message:
                 await target_message.reply_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
@@ -2842,7 +2851,17 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.effective_chat.send_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
             else:
                 logger.warning("Unable to send QR code photo after user creation")
-        
+
+        if created_uuid:
+            try:
+                fresh_user = await UserAPI.get_user_by_uuid(created_uuid)
+                if fresh_user:
+                    user_cache.invalidate_user(created_uuid)
+                    user_cache.invalidate_all_users()
+                    context.user_data["current_user"] = fresh_user
+            except Exception as exc:
+                logger.warning("Failed to refresh cache for created user %s: %s", created_uuid, exc)
+
         return SELECTING_USER
     else:
         keyboard = [
