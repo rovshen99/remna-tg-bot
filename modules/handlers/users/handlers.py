@@ -3314,6 +3314,8 @@ async def start_edit_user(update: Update, context: ContextTypes.DEFAULT_TYPE, uu
     # Создаем меню выбора поля для редактирования
     keyboard = []
     for field_key, field_name in USER_FIELDS.items():
+        if field_key in CREATE_USER_EXCLUDED_FIELDS_SET:
+            continue  # эти поля нельзя редактировать из клиента
         if field_key in user:  # Показываем только поля, которые есть у пользователя
             keyboard.append([InlineKeyboardButton(f"📝 {field_name}", callback_data=f"edit_field_{field_key}")])
     
@@ -3322,7 +3324,9 @@ async def start_edit_user(update: Update, context: ContextTypes.DEFAULT_TYPE, uu
     
     message = f"📝 *Редактирование пользователя {escape_markdown(user['username'])}*\n\n"
     message += "Выберите поле для редактирования:"
-    
+    if not keyboard:
+        message += "\n\n⚠️ Нет доступных полей для редактирования."
+
     await update.callback_query.edit_message_text(
         text=message,
         reply_markup=reply_markup,
@@ -3345,6 +3349,9 @@ async def handle_edit_field_selection(update: Update, context: ContextTypes.DEFA
         
         if field not in user:
             await query.edit_message_text("❌ Поле не найдено в данных пользователя.")
+            return EDIT_USER
+        if field in CREATE_USER_EXCLUDED_FIELDS_SET:
+            await query.answer("Это поле нельзя редактировать в клиенте.", show_alert=True)
             return EDIT_USER
         
         # Сохраняем выбранное поле
