@@ -2698,6 +2698,9 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user_data = {}
         context.user_data["create_user"] = user_data
 
+    drive_link: Optional[str] = None
+    file_id: Optional[str] = None
+
     # Generate random username if not provided (20 characters, alphanumeric)
     if "username" not in user_data or not user_data["username"]:
         characters = string.ascii_letters + string.digits
@@ -2798,13 +2801,14 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if subscription_entry:
                 links = subscription_entry.get('links') or []
 
-            file_id = await store_subscription_links(
+            temp_file_id = await store_subscription_links(
                 username=result.get('username'),
                 short_uuid=result.get('shortUuid'),
                 links=links,
             )
-            if file_id:
-                drive_link = f"https://drive.google.com/uc?id={file_id}&export=download"
+            if temp_file_id:
+                file_id = temp_file_id
+                drive_link = f"https://drive.google.com/uc?id={temp_file_id}&export=download"
                 try:
                     await UserAPI.update_user(result['uuid'], {"description": drive_link})
                     message += f"\n📁 Drive: `{drive_link}`\n"
@@ -2827,6 +2831,17 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
+        if file_id and drive_link:
+            qr_stream = _build_qr_code_payload(drive_link)
+            username_md = escape_markdown(result.get('username', ''))
+            caption = f"🔳 QR-код для `{username_md}`\n`{escape_markdown(drive_link)}`"
+            target_message = update.callback_query.message if update.callback_query else update.message
+            if target_message:
+                await target_message.reply_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
+            elif update.effective_chat:
+                await update.effective_chat.send_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
+            else:
+                logger.warning("Unable to send QR code photo after user creation")
         
         return SELECTING_USER
     else:
