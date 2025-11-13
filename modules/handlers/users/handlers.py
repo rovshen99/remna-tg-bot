@@ -4,10 +4,12 @@ import random
 import string
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse, parse_qs
+from io import BytesIO
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 import re
 import asyncio
+import qrcode
 
 from modules.config import (
     MAIN_MENU,
@@ -194,6 +196,30 @@ def _extract_drive_file_id(description: Optional[str]) -> Optional[str]:
     return None
 
 
+def _extract_first_link(text: Optional[str]) -> Optional[str]:
+    if not text:
+        return None
+    cleaned = text.strip().strip("`")
+    if not cleaned:
+        return None
+    link_match = re.search(r"([a-zA-Z][a-zA-Z0-9+.-]*://\S+)", cleaned)
+    if link_match:
+        return link_match.group(1).strip()
+    return None
+
+
+def _build_qr_code_payload(data: str) -> BytesIO:
+    qr = qrcode.QRCode(version=1, box_size=6, border=3)
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    buffer.name = "user_qrcode.png"
+    return buffer
+
+
 # Декоратор для проверки авторизации
 def require_authorization(func):
     """Декоратор для проверки авторизации пользователя"""
@@ -232,6 +258,25 @@ def log_user_action(action: str):
                 raise
         return wrapper
     return decorator
+
+# Helpers for role/status checks used across handlers
+def _is_superadmin_context(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    value = context.user_data.get('is_superadmin')
+    if value is None and update.effective_user:
+        value = is_super_admin_user(update.effective_user.id)
+        context.user_data['is_superadmin'] = value
+    return bool(value)
+
+def _is_admin_context(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    value = context.user_data.get('is_admin')
+    if value is None and update.effective_user:
+        value = is_admin_user(update.effective_user.id)
+        context.user_data['is_admin'] = value
+    return bool(value)
+
+def _is_user_active(user: Optional[Dict[str, Any]]) -> bool:
+    status = str((user or {}).get('status') or '').upper()
+    return status == "ACTIVE"
 
 # Обработка ошибок
 class ErrorHandler:
@@ -1141,14 +1186,15 @@ async def show_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         logger.error(f"Error formatting user details (safe): {e}")
         message = f"👤 Пользователь: {user.get('username','')}\n🆔 UUID: {user.get('uuid','')}\n📊 Статус: {user.get('status','')}"
 
-    can_manage_user = (
-        context.user_data.get('is_admin', False)
-        or context.user_data.get('is_superadmin', False)
-    )
+    is_superadmin = _is_superadmin_context(update, context)
+    is_admin = _is_admin_context(update, context)
+    can_manage_user = bool(is_admin or is_superadmin)
+    can_delete_user = bool(is_superadmin or (is_admin and not _is_user_active(user)))
     keyboard = SelectionHelper.create_user_info_keyboard(
         uuid,
         action_prefix="user_action",
-        is_admin=can_manage_user
+        is_admin=can_manage_user,
+        allow_delete=can_delete_user
     )
 
     try:
@@ -1168,6 +1214,41 @@ async def show_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             await update.callback_query.answer("❌ Ошибка при отображении данных")
 
     context.user_data["current_user"] = user
+    return SELECTING_USER
+
+
+async def send_user_qrcode(update: Update, context: ContextTypes.DEFAULT_TYPE, uuid: str):
+    """Generate and send QR code built from the user's description link."""
+    query = update.callback_query
+    user = context.user_data.get("current_user")
+
+    if not user or user.get("uuid") != uuid:
+        user = await user_cache.get_user(uuid)
+
+    if not user:
+        if query:
+            await query.answer("❌ Пользователь не найден.", show_alert=True)
+        return SELECTING_USER
+
+    link = _extract_first_link(user.get("description"))
+    if not link:
+        if query:
+            await query.answer("❌ В описании пользователя нет ссылки для QR-кода.", show_alert=True)
+        return SELECTING_USER
+
+    qr_stream = _build_qr_code_payload(link)
+    username = escape_markdown(user.get("username", ""))
+    caption_lines = [f"🔳 QR-код для `{username}`", f"`{escape_markdown(link)}`"]
+    caption = "\n".join(caption_lines)
+
+    target_message = query.message if query else update.effective_message
+    if target_message:
+        await target_message.reply_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
+    elif update.effective_chat:
+        await update.effective_chat.send_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
+    else:
+        logger.warning("Unable to send QR code photo: no target message or chat")
+
     return SELECTING_USER
 
 async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1275,10 +1356,12 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     parse_mode="Markdown"
                 )
                 return CONFIRM_ACTION
+            elif action == "qrcode":
+                return await send_user_qrcode(update, context, uuid)
             elif action == "delete":
                 # Confirm user deletion with extra protection
-                await confirm_delete_user(update, context, uuid)
-                return CONFIRM_ACTION
+                next_state = await confirm_delete_user(update, context, uuid)
+                return next_state if next_state is not None else CONFIRM_ACTION
 
     admin_only_prefixes = (
         "disable_",
@@ -1857,6 +1940,7 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ask for a field value when creating a user"""
     fields = _get_create_user_fields(context)
     index = _get_current_field_index(context)
+    creation_data = context.user_data.setdefault("create_user", {})
 
     if index >= len(fields):
         # All fields collected, create the user
@@ -1879,7 +1963,7 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Проверяем, используется ли шаблон
     using_template = context.user_data.get("using_template", False)
-    current_value = context.user_data["create_user"].get(field)
+    current_value = creation_data.get(field)
     
     # Если используется шаблон и поле уже заполнено, показываем текущее значение
     template_info = ""
@@ -2190,6 +2274,7 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle user input when creating a user"""
     query = update.callback_query
+    context.user_data.setdefault("create_user", {})
 
     if query:
         await query.answer()
@@ -2607,7 +2692,11 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
 
 async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Finish creating a user"""
-    user_data = context.user_data["create_user"]
+    user_data = context.user_data.get("create_user")
+    if not isinstance(user_data, dict):
+        logger.warning("create_user context was missing or invalid during finish_create_user; reinitializing")
+        user_data = {}
+        context.user_data["create_user"] = user_data
 
     # Generate random username if not provided (20 characters, alphanumeric)
     if "username" not in user_data or not user_data["username"]:
@@ -3018,6 +3107,17 @@ async def confirm_delete_user(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return USER_MENU
 
+        if not _is_superadmin_context(update, context) and _is_user_active(user):
+            warning_text = (
+                "❌ Диллеры не могут удалять активных пользователей. "
+                "Сначала отключите пользователя или обратитесь к суперадмину."
+            )
+            if update.callback_query:
+                await update.callback_query.answer(warning_text, show_alert=True)
+            elif update.effective_chat:
+                await update.effective_chat.send_message(warning_text)
+            return SELECTING_USER
+
         context.user_data["delete_user"] = user
         context.user_data["action"] = "delete"
         context.user_data["uuid"] = uuid
@@ -3081,6 +3181,19 @@ async def execute_user_deletion(update: Update, context: ContextTypes.DEFAULT_TY
         uuid = user_to_delete['uuid']
         username = user_to_delete['username']
         drive_file_id = _extract_drive_file_id(user_to_delete.get("description"))
+
+        if not _is_superadmin_context(update, context) and _is_user_active(user_to_delete):
+            keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"view_{uuid}")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.callback_query.edit_message_text(
+                "❌ Активного пользователя может удалить только суперадмин.",
+                reply_markup=reply_markup
+            )
+            context.user_data.pop("delete_user", None)
+            context.user_data.pop("action", None)
+            context.user_data.pop("uuid", None)
+            context.user_data.pop("waiting_for", None)
+            return SELECTING_USER
         
         # Show deletion in progress
         await update.callback_query.edit_message_text(

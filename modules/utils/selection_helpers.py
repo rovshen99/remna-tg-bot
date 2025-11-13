@@ -211,7 +211,12 @@ class SelectionHelper:
             return []
     
     @staticmethod
-    def create_user_info_keyboard(user_uuid: str, action_prefix: str = "user_action", is_admin: bool = False) -> InlineKeyboardMarkup:
+    def create_user_info_keyboard(
+        user_uuid: str,
+        action_prefix: str = "user_action",
+        is_admin: bool = False,
+        allow_delete: bool = True,
+    ) -> InlineKeyboardMarkup:
         """Create keyboard with user actions"""
         rows = []
 
@@ -228,13 +233,19 @@ class SelectionHelper:
                 [
                     InlineKeyboardButton("📊 Сбросить трафик", callback_data=f"{action_prefix}_reset_traffic_{user_uuid}"),
                     InlineKeyboardButton("🔐 Отозвать подписку", callback_data=f"{action_prefix}_revoke_{user_uuid}")
-                ],
-                [
-                    InlineKeyboardButton("🗑️ Удалить", callback_data=f"{action_prefix}_delete_{user_uuid}")
                 ]
             ])
+
+            if allow_delete:
+                rows.append([
+                    InlineKeyboardButton("🗑️ Удалить", callback_data=f"{action_prefix}_delete_{user_uuid}")
+                ])
         else:
             rows.append([InlineKeyboardButton("🔄 Обновить данные", callback_data=f"{action_prefix}_refresh_{user_uuid}")])
+
+        rows.append([
+            InlineKeyboardButton("🔳 QR code", callback_data=f"{action_prefix}_qrcode_{user_uuid}")
+        ])
 
         rows.append([InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_users")])
         return InlineKeyboardMarkup(rows)

@@ -8,4 +8,5 @@ google-auth==2.34.0
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.1
 python-telegram-bot==20.6
+qrcode[pil]==7.4.2
 # aiohttp==3.9.0  # Заменили на httpx
