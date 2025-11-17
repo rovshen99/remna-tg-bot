@@ -2898,7 +2898,7 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if link_for_qr:
             qr_stream = _build_qr_code_payload(link_for_qr)
             username_md = escape_markdown(result.get('username', ''))
-            caption = f"🔳 QR-код для `{username_md}`\n`{link_for_qr}`"
+            caption = f"🔳 `QR-код для` `{username_md}`\n`{link_for_qr}`"
             target_message = update.callback_query.message if update.callback_query else update.message
             if target_message:
                 await target_message.reply_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
