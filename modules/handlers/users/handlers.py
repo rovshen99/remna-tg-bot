@@ -10,6 +10,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 import re
 import asyncio
 import qrcode
+import httpx
 
 from modules.config import (
     MAIN_MENU,
@@ -25,6 +26,8 @@ from modules.config import (
     USER_FIELDS,
     ACTIVE_INTERNAL_SQUADS,
     CREATE_USER_EXCLUDED_FIELDS_SET,
+    SUBSCRIPTION_DRIVE_LINK,
+    SUBSCRIPTION_SCRIPT_URL,
 )
 
 # Константы для callback_data
@@ -114,7 +117,15 @@ class Messages:
     CONFIRM_RESET = "⚠️ Вы уверены, что хотите сбросить трафик пользователя?"
     CONFIRM_REVOKE = "⚠️ Вы уверены, что хотите отозвать подписку пользователя?"
 from modules.api.users import UserAPI
-from modules.utils.formatters import format_bytes, format_user_details, format_user_details_safe, escape_markdown, safe_edit_message
+from modules.utils.formatters import (
+    format_bytes,
+    format_user_details,
+    format_user_details_safe,
+    escape_markdown,
+    safe_edit_message,
+    resolve_description_link,
+    parse_description_links,
+)
 from modules.utils.selection_helpers import SelectionHelper
 from modules.utils.google_drive import store_subscription_links, delete_drive_file
 from modules.utils.auth import (
@@ -174,12 +185,11 @@ def _advance_field_index(context: ContextTypes.DEFAULT_TYPE, step: int = 1) -> i
 def _extract_drive_file_id(description: Optional[str]) -> Optional[str]:
     if not description:
         return None
-    text = description.strip()
-    if text.startswith("`") and text.endswith("`"):
-        text = text[1:-1]
+    links = parse_description_links(description)
+    text = links.get("drive") or str(description)
+    text = text.strip().strip("`")
     if not text:
         return None
-    # Attempt to parse as URL
     try:
         parsed = urlparse(text)
         if parsed.query:
@@ -187,24 +197,11 @@ def _extract_drive_file_id(description: Optional[str]) -> Optional[str]:
             file_ids = params.get("id")
             if file_ids:
                 return file_ids[0]
-        # Fallback to /d/<fileId>/ style URLs
         drive_match = re.search(r"/d/([a-zA-Z0-9_-]+)", text)
         if drive_match:
             return drive_match.group(1)
     except Exception as exc:
         logger.debug("Failed to parse Drive link '%s': %s", description, exc)
-    return None
-
-
-def _extract_first_link(text: Optional[str]) -> Optional[str]:
-    if not text:
-        return None
-    cleaned = text.strip().strip("`")
-    if not cleaned:
-        return None
-    link_match = re.search(r"([a-zA-Z][a-zA-Z0-9+.-]*://\S+)", cleaned)
-    if link_match:
-        return link_match.group(1).strip()
     return None
 
 
@@ -218,6 +215,25 @@ def _build_qr_code_payload(data: str) -> BytesIO:
     buffer.seek(0)
     buffer.name = "user_qrcode.png"
     return buffer
+
+
+async def _fetch_encrypted_subscription_link(short_uuid: Optional[str]) -> Optional[str]:
+    if not short_uuid:
+        return None
+    macro_url = SUBSCRIPTION_SCRIPT_URL.format(shortUuid=short_uuid, userShortUuid=short_uuid)
+    payload = {"url": macro_url}
+    headers = {"Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post("https://crypto.happ.su/api.php", json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            encrypted_link = data.get("encrypted_link")
+            if encrypted_link:
+                return str(encrypted_link)
+    except Exception as exc:
+        logger.error("Failed to fetch encrypted subscription link for %s: %s", short_uuid, exc)
+    return None
 
 
 # Декоратор для проверки авторизации
@@ -1230,7 +1246,7 @@ async def send_user_qrcode(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             await query.answer("❌ Пользователь не найден.", show_alert=True)
         return SELECTING_USER
 
-    link = _extract_first_link(user.get("description"))
+    link = resolve_description_link(user.get("description"))
     if not link:
         if query:
             await query.answer("❌ В описании пользователя нет ссылки для QR-кода.", show_alert=True)
@@ -1238,7 +1254,7 @@ async def send_user_qrcode(update: Update, context: ContextTypes.DEFAULT_TYPE, u
 
     qr_stream = _build_qr_code_payload(link)
     username = escape_markdown(user.get("username", ""))
-    caption_lines = [f"🔳 QR-код для `{username}`", f"`{escape_markdown(link)}`"]
+    caption_lines = [f"🔳 QR-код для `{username}`", f"{escape_markdown(link)}"]
     caption = "\n".join(caption_lines)
 
     target_message = query.message if query else update.effective_message
@@ -2704,7 +2720,7 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data["create_user"] = user_data
 
     drive_link: Optional[str] = None
-    file_id: Optional[str] = None
+    encrypted_link: Optional[str] = None
 
     # Generate random username if not provided (20 characters, alphanumeric)
     if "username" not in user_data or not user_data["username"]:
@@ -2790,10 +2806,15 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
             message += f"🆔 UUID: `{created_uuid}`\n"
         if result.get('shortUuid'):
             message += f"🔑 Короткий UUID: `{result['shortUuid']}`\n"
+        link_for_qr: Optional[str] = None
+        drive_link: Optional[str] = None
+        encrypted_link: Optional[str] = None
+        description_payload: Optional[str] = None
+        base_description = user_data.get("description")
         # v208 может не возвращать subscriptionUuid — показываем только URL, если есть
         if result.get('subscriptionUrl'):
             subscription_url = result['subscriptionUrl']
-            message += f"\n🔗 URL подписки: `{subscription_url}`\n"
+            # message += f"\n🔗 URL подписки: `{subscription_url}`\n"
 
             subscription_entry = None
             short_uuid = result.get('shortUuid')
@@ -2810,24 +2831,57 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if subscription_entry:
                 links = subscription_entry.get('links') or []
 
-            temp_file_id = await store_subscription_links(
-                username=result.get('username'),
-                short_uuid=result.get('shortUuid'),
-                links=links,
-            )
-            if temp_file_id and created_uuid:
-                file_id = temp_file_id
-                drive_link = f"`https://drive.google.com/uc?id={temp_file_id}&export=download`"
+            if created_uuid:
+                temp_file_id = await store_subscription_links(
+                    username=result.get('username'),
+                    short_uuid=result.get('shortUuid'),
+                    links=links,
+                )
+                if temp_file_id:
+                    drive_link = f"https://drive.google.com/uc?id={temp_file_id}&export=download"
+
+            if short_uuid and created_uuid:
+                encrypted_link = await _fetch_encrypted_subscription_link(short_uuid)
+                if not encrypted_link:
+                    logger.warning("Encrypted link request returned nothing for short UUID %s", short_uuid)
+
+        if created_uuid:
+            description_parts: List[str] = []
+            if drive_link:
+                description_parts.append(f"drive:{drive_link}")
+            if encrypted_link:
+                description_parts.append(f"secure:{encrypted_link}")
+            if base_description and description_parts:
+                description_parts.append(f"text:{base_description}")
+            if description_parts:
+                description_payload = " || ".join(description_parts)
+            else:
+                description_payload = base_description
+
+            if description_payload:
                 try:
-                    await UserAPI.update_user(created_uuid, {"description": drive_link})
-                    message += f"\n📁 Drive: `{drive_link}`\n"
+                    await UserAPI.update_user(created_uuid, {"description": description_payload})
                 except Exception as exc:
-                    logger.error("Failed to update user description with Drive link: %s", exc)
-        # Clear creation context now that user is created
+                    logger.error("Failed to update user description: %s", exc)
+
+        preferred_link = resolve_description_link(description_payload) if description_payload else None
+        if not preferred_link:
+            primary = drive_link if SUBSCRIPTION_DRIVE_LINK else encrypted_link
+            preferred_link = primary or drive_link or encrypted_link
+        if preferred_link:
+            label = "📁 Drive" if SUBSCRIPTION_DRIVE_LINK else "🔐 Happ"
+            message += f"\n📝 {label}:\n`{escape_markdown(preferred_link)}`\n"
+        if base_description:
+            message += f"✏️ Примечание: {escape_markdown(base_description)}\n"
+
+        if preferred_link:
+            link_for_qr = preferred_link
+        elif not link_for_qr:
+            link_for_qr = drive_link or encrypted_link
+
         for key in ("create_user", "create_user_fields", "current_field_index", "using_template", "search_type", "waiting_for"):
             context.user_data.pop(key, None)
 
-        
         if update.callback_query:
             await update.callback_query.edit_message_text(
                 text=message,
@@ -2840,10 +2894,10 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
-        if file_id and drive_link:
-            qr_stream = _build_qr_code_payload(drive_link)
+        if link_for_qr:
+            qr_stream = _build_qr_code_payload(link_for_qr)
             username_md = escape_markdown(result.get('username', ''))
-            caption = f"🔳 QR-код для `{username_md}`\n{escape_markdown(drive_link)}"
+            caption = f"🔳 QR-код для `{username_md}`\n{escape_markdown(link_for_qr)}"
             target_message = update.callback_query.message if update.callback_query else update.message
             if target_message:
                 await target_message.reply_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")

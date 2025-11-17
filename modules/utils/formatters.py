@@ -1,9 +1,48 @@
 from datetime import datetime
-
 import logging
-from datetime import datetime
+import re
+from typing import Any, Dict, Optional
+
+from modules.config import SUBSCRIPTION_DRIVE_LINK
 
 logger = logging.getLogger(__name__)
+
+
+def parse_description_links(description: Optional[str]) -> Dict[str, str]:
+    links: Dict[str, str] = {}
+    if not description:
+        return links
+    text = str(description).strip()
+    if not text:
+        return links
+    parts = [part.strip() for part in text.split("||") if part.strip()]
+    for part in parts:
+        lower = part.lower()
+        if lower.startswith("drive:"):
+            links["drive"] = part.split(":", 1)[1].strip().strip("`")
+        elif lower.startswith("secure:"):
+            links["secure"] = part.split(":", 1)[1].strip().strip("`")
+        elif lower.startswith("text:"):
+            links["text"] = part.split(":", 1)[1].strip()
+        else:
+            # Fallback to raw link detection
+            match = re.search(r"([a-zA-Z][a-zA-Z0-9+.-]*://\S+)", part)
+            if match:
+                links.setdefault("raw", match.group(1).strip())
+    if not links and text:
+        match = re.search(r"([a-zA-Z][a-zA-Z0-9+.-]*://\S+)", text)
+        if match:
+            links["raw"] = match.group(1).strip()
+    return links
+
+
+def resolve_description_link(description: Optional[str]) -> Optional[str]:
+    links = parse_description_links(description)
+    if SUBSCRIPTION_DRIVE_LINK and links.get("drive"):
+        return links["drive"]
+    if not SUBSCRIPTION_DRIVE_LINK and links.get("secure"):
+        return links["secure"]
+    return links.get("drive") or links.get("secure") or links.get("raw")
 
 async def safe_edit_message(query, text, reply_markup=None, parse_mode=None):
     """Safely edit message text with error handling for 'Message is not modified'"""
@@ -125,8 +164,16 @@ def format_user_details(user):
         message += f"🔄 *Стратегия сброса:* {user['trafficLimitStrategy']}\n"
         message += f"{expire_status} *Истекает:* {expire_text}\n\n"
         
-        if user.get('description'):
-            message += f"📝 *Описание:* {escape_markdown(str(user['description']))}\n"
+        description = user.get('description')
+        if description:
+            preferred = resolve_description_link(description)
+            links = parse_description_links(description)
+            note = links.get("text")
+            if preferred:
+                label = "📁 Drive" if SUBSCRIPTION_DRIVE_LINK else "🔐 Happ"
+                message += f"📝 *Описание:* {label}:\n`{escape_markdown(preferred)}`\n"
+            else:
+                message += f"📝 *Описание:* {escape_markdown(str(description))}\n"
         
         if user.get('tag'):
             message += f"🏷️ *Тег:* {escape_markdown(str(user['tag']))}\n"
@@ -169,8 +216,15 @@ def format_user_details(user):
         message += f"🔄 Стратегия сброса: {user['trafficLimitStrategy']}\n"
         message += f"{expire_status} Истекает: {expire_text}\n\n"
         
-        if user.get('description'):
-            message += f"📝 Описание: {user['description']}\n"
+        description = user.get('description')
+        if description:
+            preferred = resolve_description_link(description)
+            links = parse_description_links(description)
+            if preferred:
+                label = "Drive" if SUBSCRIPTION_DRIVE_LINK else "Happ"
+                message += f"📝 Описание ({label}):\n`{preferred}`\n"
+        else:
+            message += f"📝 Описание: {description}\n"
         
         if user.get('tag'):
             message += f"🏷️ Тег: {user['tag']}\n"
@@ -214,36 +268,49 @@ def format_user_details_safe(user):
         message += f"📝 UUID подписки: {user.get('subscriptionUuid')}\n\n"
     
     # URL подписки без какого-либо форматирования (без <pre> и без блоков кода)
-    subscription_url = user.get('subscriptionUrl', '')
-    if subscription_url:
-        message += f"🔗 URL подписки:\n{subscription_url}\n\n"
-    else:
-        message += f"🔗 URL подписки: Не указан\n\n"
+    # subscription_url = user.get('subscriptionUrl', '')
+    # if subscription_url:
+    #     message += f"🔗 URL подписки:\n{subscription_url}\n\n"
+    # else:
+    #     message += f"🔗 URL подписки: Не указан\n\n"
     
     message += f"📊 Статус: {status_emoji} {user['status']}\n"
     message += f"📈 Трафик: {format_bytes(user['usedTrafficBytes'])}/{format_bytes(user['trafficLimitBytes'])}\n"
     message += f"🔄 Стратегия сброса: {user['trafficLimitStrategy']}\n"
     message += f"{expire_status} Истекает: {expire_text}\n\n"
     
-    if user.get('description'):
-        message += f"📝 Описание: {user['description']}\n"
+    description = user.get('description')
+    if description:
+        preferred = resolve_description_link(description)
+        links = parse_description_links(description)
+        note = links.get("text")
+        if preferred:
+            label = "Drive" if SUBSCRIPTION_DRIVE_LINK else "Happ"
+            message += (
+                f"📝 Описание ({label}):\n"
+                f"`\n"
+                f"{preferred}\n"
+                f"`\n"
+            )
+        else:
+            message += f"📝 Описание: `{description}`\n"
     
-    if user.get('tag'):
-        message += f"🏷️ Тег: {user['tag']}\n"
-    
-    if user.get('telegramId'):
-        message += f"📱 Telegram ID: {user['telegramId']}\n"
-    
-    if user.get('email'):
-        message += f"📧 Email: {user['email']}\n"
+    # if user.get('tag'):
+    #     message += f"🏷️ Тег: {user['tag']}\n"
+    #
+    # if user.get('telegramId'):
+    #     message += f"📱 Telegram ID: {user['telegramId']}\n"
+    #
+    # if user.get('email'):
+    #     message += f"📧 Email: {user['email']}\n"
     
     if user.get('hwidDeviceLimit'):
         message += f"📱 Лимит устройств: {user['hwidDeviceLimit']}\n"
     
-    if user.get('createdAt'):
-        message += f"\n⏱️ Создан: {user['createdAt'][:10]}\n"
-    if user.get('updatedAt'):
-        message += f"🔄 Обновлен: {user['updatedAt'][:10]}\n"
+    # if user.get('createdAt'):
+    #     message += f"\n⏱️ Создан: {user['createdAt'][:10]}\n"
+    # if user.get('updatedAt'):
+    #     message += f"🔄 Обновлен: {user['updatedAt'][:10]}\n"
     
     return message
 

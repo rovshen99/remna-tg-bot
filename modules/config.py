@@ -103,6 +103,11 @@ GOOGLE_OAUTH_TOKEN_FILE = _resolve_path(os.getenv("GOOGLE_OAUTH_TOKEN_FILE"))
 GOOGLE_OAUTH_CLIENT_SECRET_FILE = _resolve_path(os.getenv("GOOGLE_OAUTH_CLIENT_SECRET_FILE"))
 
 GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID = os.getenv("GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID")
+SUBSCRIPTION_DRIVE_LINK = os.getenv("SUBSCRIPTION_DRIVE_LINK", "false").lower() == "true"
+SUBSCRIPTION_SCRIPT_URL = os.getenv(
+    "SUBSCRIPTION_SCRIPT_URL",
+    "https://script.google.com/macros/s/AKfycbwIMaOuOjlvfqBN7tLevued0dqMZXrSkGIXBry9YSHxFJkH2Ewbx2Rl7ACEV5SiF9iy/exec?id={shortUuid}",
+)
 
 active_squads_env = os.getenv("ACTIVE_INTERNAL_SQUADS", "")
 ACTIVE_INTERNAL_SQUADS = [s.strip() for s in active_squads_env.split(",") if s.strip()]
