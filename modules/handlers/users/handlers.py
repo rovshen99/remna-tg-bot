@@ -1216,14 +1216,16 @@ async def show_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     try:
         await update.callback_query.edit_message_text(
             text=message,
-            reply_markup=keyboard
+            reply_markup=keyboard,
+            parse_mode = "Markdown"
         )
     except Exception as e:
         logger.error(f"Error sending user details: {e}")
         try:
             await update.callback_query.edit_message_caption(
                 caption=message,
-                reply_markup=keyboard
+                reply_markup=keyboard,
+                parse_mode="Markdown"
             )
         except Exception as e2:
             logger.error(f"Fallback to edit_message_caption failed: {e2}")
@@ -1254,7 +1256,7 @@ async def send_user_qrcode(update: Update, context: ContextTypes.DEFAULT_TYPE, u
 
     qr_stream = _build_qr_code_payload(link)
     username = escape_markdown(user.get("username", ""))
-    caption_lines = [f"🔳 `QR-код для` `lol` `{username}`", f"`{escape_markdown(link)}`"]
+    caption_lines = [f"🔳 QR-код для `{username}`", f"`{escape_markdown(link)}`"]
     caption = "\n".join(caption_lines)
 
     target_message = query.message if query else update.effective_message
@@ -1649,7 +1651,8 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await update.message.reply_text(
                         text=message,
-                        reply_markup=reply_markup
+                        reply_markup=reply_markup,
+                        parse_mode="Markdown"
                     )
                 except Exception as e:
                     logger.error(f"Error sending formatted message with Markdown: {e}")
@@ -1669,7 +1672,8 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await update.message.reply_text(
                     text=f"Найден пользователь: {user.get('username','Без имени')}",
-                    reply_markup=reply_markup
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
                 )
                 context.user_data["current_user"] = user
                 return SELECTING_USER
@@ -2898,7 +2902,7 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if link_for_qr:
             qr_stream = _build_qr_code_payload(link_for_qr)
             username_md = escape_markdown(result.get('username', ''))
-            caption = f"🔳 `QR-код для` `lol` `{username_md}`\n`{escape_markdown(link_for_qr)}`"
+            caption = f"🔳 QR-код для `{username_md}`\n`{escape_markdown(link_for_qr)}`"
             target_message = update.callback_query.message if update.callback_query else update.message
             if target_message:
                 await target_message.reply_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
