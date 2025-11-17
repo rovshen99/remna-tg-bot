@@ -2117,7 +2117,6 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = "📈 *Выберите лимит трафика*\n\nДоступные пресеты: 50 ГБ, 100 ГБ и 200 ГБ."
         if user_is_super_admin:
             message += "\nТакже можно ввести своё значение в байтах."
-            message += "\nБезлимитный лимит доступен только суперадмину."
         else:
             message += "\nНестандартные значения вводить нельзя."
         
