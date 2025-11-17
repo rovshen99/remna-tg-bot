@@ -1254,7 +1254,7 @@ async def send_user_qrcode(update: Update, context: ContextTypes.DEFAULT_TYPE, u
 
     qr_stream = _build_qr_code_payload(link)
     username = escape_markdown(user.get("username", ""))
-    caption_lines = [f"🔳 QR-код для `{username}`", f"{escape_markdown(link)}"]
+    caption_lines = [f"🔳 `QR-код для` `lol` `{username}`", f"`{escape_markdown(link)}`"]
     caption = "\n".join(caption_lines)
 
     target_message = query.message if query else update.effective_message
