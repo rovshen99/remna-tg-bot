@@ -142,6 +142,9 @@ logger = logging.getLogger(__name__)
 
 TEMPLATES_ENABLED = False
 
+GB = 1024 * 1024 * 1024
+DEFAULT_NON_SUPERADMIN_LIMIT_GB = 200
+
 
 def _filter_create_fields(fields: List[str], ensure_username: bool = True) -> List[str]:
     """Filter out excluded fields while keeping username available."""
@@ -1838,13 +1841,21 @@ async def start_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("current_field_index", None)
     context.user_data.pop("search_type", None)  # Clear search type to avoid confusion
     context.user_data.pop("using_template", None)
+    context.user_data.pop("selected_template", None)
     
     # Initialize user creation data
     context.user_data["create_user"] = {}
     
     # Show template selection
-    await show_template_selection(update, context)
-    return CREATE_USER_FIELD
+    if TEMPLATES_ENABLED:
+        await show_template_selection(update, context)
+        return CREATE_USER_FIELD
+
+    # Templates отключены - сразу запускаем ручное создание
+    context.user_data["create_user_fields"] = _default_create_field_order()
+    context.user_data["current_field_index"] = 0
+    context.user_data["using_template"] = False
+    return await ask_for_field(update, context)
 
 async def show_template_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show template selection menu"""
@@ -1943,6 +1954,19 @@ async def start_template_creation(update: Update, context: ContextTypes.DEFAULT_
     context.user_data["create_user"] = apply_template_to_user_data({}, template_name)
     context.user_data["using_template"] = True
     context.user_data["template_name"] = template_name
+    creator = update.effective_user
+    is_super_admin = bool(creator and is_super_admin_user(creator.id))
+    if not is_super_admin:
+        traffic_limit = context.user_data["create_user"].get("trafficLimitBytes")
+        if traffic_limit == 0:
+            fallback_limit = DEFAULT_NON_SUPERADMIN_LIMIT_GB * GB
+            context.user_data["create_user"]["trafficLimitBytes"] = fallback_limit
+            logger.info(
+                "Applied template %s with unlimited traffic for non-super admin %s; defaulted to %s GB",
+                template_name,
+                creator.id if creator else "unknown",
+                DEFAULT_NON_SUPERADMIN_LIMIT_GB,
+            )
     
     if customize:
         # Полная настройка - проходим все поля
@@ -1962,6 +1986,8 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     fields = _get_create_user_fields(context)
     index = _get_current_field_index(context)
     creation_data = context.user_data.setdefault("create_user", {})
+    creator = update.effective_user
+    user_is_super_admin = bool(creator and is_super_admin_user(creator.id))
 
     if index >= len(fields):
         # All fields collected, create the user
@@ -1990,6 +2016,15 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     template_info = ""
     if using_template and current_value is not None:
         if field == "trafficLimitBytes":
+            if current_value == 0 and not user_is_super_admin:
+                fallback_limit = DEFAULT_NON_SUPERADMIN_LIMIT_GB * GB
+                creation_data[field] = fallback_limit
+                current_value = fallback_limit
+                logger.info(
+                    "Adjusted template traffic limit to %s GB for non-super admin %s",
+                    DEFAULT_NON_SUPERADMIN_LIMIT_GB,
+                    creator.id if creator else "unknown",
+                )
             from modules.utils.formatters import format_bytes
             display_value = "Безлимитный" if current_value == 0 else format_bytes(current_value)
             template_info = f"\n🎯 *Значение из шаблона:* {display_value}"
@@ -2033,41 +2068,32 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")]
             ]
         else:
-            keyboard = [
-                # [InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")],
-                # [InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")]
-            ]
+            keyboard = []
         
         reply_markup = InlineKeyboardMarkup(keyboard)
 
     # Special handling for expireAt
     elif field == "expireAt":
-        # Default to 30 days from now
-        default_value = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-        message = f"📅 *Выберите или введите дату истечения*{template_info}\n\n"
-        message += "Введите дату в формате YYYY-MM-DD или выберите один из пресетов ниже:"
+        message = f"📅 *Выберите дату истечения*{template_info}\n\n"
+        message += "Ниже представлены доступные варианты (30 или 60 дней)."
+        if user_is_super_admin:
+            message += " Доступен пресет «Безлимит (80 лет)», а также можно вручную ввести дату в формате YYYY-MM-DD."
+        else:
+            message += " Ввод произвольной даты недоступен для вашего уровня доступа."
         
         # Создаем пресеты дат с разными периодами
         today = datetime.now()
         keyboard = [
             [
-                InlineKeyboardButton("1 день", callback_data=f"create_date_{(today + timedelta(days=1)).strftime('%Y-%m-%d')}"),
-                InlineKeyboardButton("3 дня", callback_data=f"create_date_{(today + timedelta(days=3)).strftime('%Y-%m-%d')}"),
-                InlineKeyboardButton("7 дней", callback_data=f"create_date_{(today + timedelta(days=7)).strftime('%Y-%m-%d')}")
-            ],
-            [
                 InlineKeyboardButton("30 дней", callback_data=f"create_date_{(today + timedelta(days=30)).strftime('%Y-%m-%d')}"),
-                InlineKeyboardButton("60 дней", callback_data=f"create_date_{(today + timedelta(days=60)).strftime('%Y-%m-%d')}"),
-                InlineKeyboardButton("90 дней", callback_data=f"create_date_{(today + timedelta(days=90)).strftime('%Y-%m-%d')}")
-            ],
-            [
-                InlineKeyboardButton("180 дней", callback_data=f"create_date_{(today + timedelta(days=180)).strftime('%Y-%m-%d')}"),
-                InlineKeyboardButton("365 дней", callback_data=f"create_date_{(today + timedelta(days=365)).strftime('%Y-%m-%d')}")
-            ],
-            [InlineKeyboardButton("80 лет 👑", callback_data=f"create_date_{(today + timedelta(days=365*80)).strftime('%Y-%m-%d')}")],
-            [InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")],
-            [InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")]
+                InlineKeyboardButton("60 дней", callback_data=f"create_date_{(today + timedelta(days=60)).strftime('%Y-%m-%d')}")
+            ]
         ]
+        if user_is_super_admin:
+            keyboard.append([
+                InlineKeyboardButton("Безлимит (80 лет)", callback_data=f"create_date_{(today + timedelta(days=365*80)).strftime('%Y-%m-%d')}")
+            ])
+        keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -2088,37 +2114,23 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Special handling for trafficLimitBytes
     elif field == "trafficLimitBytes":
-        message = f"📈 *Выберите лимит трафика*\n\nВыберите один из пресетов или введите своё значение в байтах:"
+        message = "📈 *Выберите лимит трафика*\n\nДоступные пресеты: 50 ГБ, 100 ГБ и 200 ГБ."
+        if user_is_super_admin:
+            message += "\nТакже можно ввести своё значение в байтах."
+            message += "\nБезлимитный лимит доступен только суперадмину."
+        else:
+            message += "\nНестандартные значения вводить нельзя."
         
-        # Создаём пресеты трафика с шагом по 200 ГБ до 1 ТБ (и другие популярные)
-        # Конвертация в байты: умножаем на 1024^3
-        GB = 1024 * 1024 * 1024
         keyboard = [
             [
                 InlineKeyboardButton("50 ГБ", callback_data=f"create_traffic_{50 * GB}"),
                 InlineKeyboardButton("100 ГБ", callback_data=f"create_traffic_{100 * GB}"),
                 InlineKeyboardButton("200 ГБ", callback_data=f"create_traffic_{200 * GB}")
-            ],
-            [
-                InlineKeyboardButton("400 ГБ", callback_data=f"create_traffic_{400 * GB}"),
-                InlineKeyboardButton("600 ГБ", callback_data=f"create_traffic_{600 * GB}"),
-                InlineKeyboardButton("800 ГБ", callback_data=f"create_traffic_{800 * GB}")
-            ],
-            [
-                InlineKeyboardButton("1 ТБ", callback_data=f"create_traffic_{1024 * GB}"),
-                InlineKeyboardButton("2 ТБ", callback_data=f"create_traffic_{2048 * GB}"),
-                InlineKeyboardButton("5 ТБ", callback_data=f"create_traffic_{5120 * GB}")
-            ],
-            [
-                InlineKeyboardButton("Безлимитный", callback_data="create_traffic_0")
-            ],
-            [InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")],
-            [InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")]
+            ]
         ]
-        
-        # Логирование для отладки
-        logger.debug(f"Setting up traffic limit buttons with callback data: create_traffic_0 for unlimited")
-        logger.debug(f"First button callback: {keyboard[0][0].callback_data}")
+        if user_is_super_admin:
+            keyboard.append([InlineKeyboardButton("Безлимитный", callback_data="create_traffic_0")])
+        keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -2148,7 +2160,6 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("Тестовый аккаунт", callback_data="create_desc_Тестовый аккаунт")],
             [InlineKeyboardButton("Корпоративный клиент", callback_data="create_desc_Корпоративный клиент")],
             [InlineKeyboardButton("Демо-аккаунт", callback_data="create_desc_Демо-аккаунт")],
-            [InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")],
             [InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")]
         ]
         
@@ -2171,26 +2182,24 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Special handling for hwidDeviceLimit
     elif field == "hwidDeviceLimit":
-        message = f"📱 *Выберите лимит устройств*\n\nВыберите один из пресетов или введите своё значение:"
+        message = (
+            "📱 *Выберите лимит устройств*\n\n"
+            "Ниже приведены доступные варианты."
+        )
+        if user_is_super_admin:
+            message += " Вы можете также ввести своё значение (целое число)."
+        else:
+            message += " Ввод произвольного значения недоступен."
         
-        # Создаём пресеты для лимита устройств
         keyboard = [
             [
                 InlineKeyboardButton("1 устройство", callback_data="create_device_1"),
-                InlineKeyboardButton("2 устройства", callback_data="create_device_2"),
-                InlineKeyboardButton("3 устройства", callback_data="create_device_3")
-            ],
-            [
-                InlineKeyboardButton("4 устройства", callback_data="create_device_4"),
-                InlineKeyboardButton("5 устройств", callback_data="create_device_5"),
-                InlineKeyboardButton("10 устройств", callback_data="create_device_10")
-            ],
-            [
-                InlineKeyboardButton("Без лимита (0)", callback_data="create_device_0")
-            ],
-            [InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")],
-            [InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")]
+                InlineKeyboardButton("2 устройства", callback_data="create_device_2")
+            ]
         ]
+        if user_is_super_admin:
+            keyboard.append([InlineKeyboardButton("Без лимита (0)", callback_data="create_device_0")])
+        keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -2216,7 +2225,6 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("DAY - Ежедневно", callback_data="create_field_DAY")],
             [InlineKeyboardButton("WEEK - Еженедельно", callback_data="create_field_WEEK")],
             [InlineKeyboardButton("MONTH - Ежемесячно", callback_data="create_field_MONTH")],
-            [InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")]
         ]
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2242,7 +2250,7 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = f"Введите {field_name}:{template_info}"
 
     if not field == 'username':
-        keyboard = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")]]
+        keyboard = []
 
     # Для шаблонов добавляем кнопку "использовать значение из шаблона"
     if using_template and current_value is not None and field not in ["username"]:
@@ -2445,6 +2453,13 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     sanitized_value = sanitized_value.lstrip('_')
                     sanitized_value = ''.join(ch for ch in sanitized_value if ch.isdigit())
                     value = int(sanitized_value) if sanitized_value else 0
+                    user_is_super_admin = bool(
+                        update.effective_user and is_super_admin_user(update.effective_user.id)
+                    )
+                    if value == 0 and not user_is_super_admin:
+                        await query.answer("Безлимит доступен только суперадмину.", show_alert=True)
+                        await ask_for_field(update, context)
+                        return CREATE_USER_FIELD
                     context.user_data["create_user"][field] = value
                     
                     # Форматируем значение в читаемый вид
@@ -2595,33 +2610,44 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     return CREATE_USER_FIELD
             
             elif field == "expireAt":
+                user_is_super_admin = bool(
+                    update.effective_user and is_super_admin_user(update.effective_user.id)
+                )
+                if not user_is_super_admin:
+                    await update.message.reply_text(
+                        "❌ Ввод произвольной даты доступен только суперадмину. Используйте кнопки с готовыми вариантами.",
+                        parse_mode="Markdown"
+                    )
+                    return CREATE_USER_FIELD
                 try:
                     # Validate date format
                     date_obj = datetime.strptime(value, "%Y-%m-%d")
                     value = date_obj.strftime("%Y-%m-%dT00:00:00.000Z")
                 except ValueError:
-                    keyboard = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")]]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
                     await update.message.reply_text(
                         "❌ Неверный формат даты. Используйте YYYY-MM-DD.",
-                        reply_markup=reply_markup,
                         parse_mode="Markdown"
                     )
                     return CREATE_USER_FIELD
             
             elif field == "trafficLimitBytes":
+                user_is_super_admin = bool(
+                    update.effective_user and is_super_admin_user(update.effective_user.id)
+                )
                 try:
                     value = int(value)
                     if value < 0:
                         raise ValueError("Traffic limit cannot be negative")
+                    if not user_is_super_admin:
+                        await update.message.reply_text(
+                            "❌ Нестандартные значения доступны только суперадмину. Выберите лимит из списка кнопок ниже.",
+                            parse_mode="Markdown"
+                        )
+                        await ask_for_field(update, context)
+                        return CREATE_USER_FIELD
                 except ValueError:
-                    keyboard = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")]]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
                     await update.message.reply_text(
                         "❌ Неверный формат числа. Введите целое число >= 0.",
-                        reply_markup=reply_markup,
                         parse_mode="Markdown"
                     )
                     return CREATE_USER_FIELD
@@ -2630,41 +2656,38 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                 try:
                     value = int(value)
                 except ValueError:
-                    keyboard = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")]]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
                     await update.message.reply_text(
                         "❌ Неверный формат Telegram ID. Введите целое число.",
-                        reply_markup=reply_markup,
                         parse_mode="Markdown"
                     )
                     return CREATE_USER_FIELD
             
             elif field == "tag":
                 if value and not re.match(r"^[A-Z0-9_]{1,16}$", value):
-                    keyboard = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")]]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
                     await update.message.reply_text(
                         "❌ Неверный формат тега. Используйте только ЗАГЛАВНЫЕ буквы, цифры и подчеркивания. Максимальная длина - 16 символов.",
-                        reply_markup=reply_markup,
                         parse_mode="Markdown"
                     )
                     return CREATE_USER_FIELD
             
             elif field == "email":
                 if value and not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", value):
-                    keyboard = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")]]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
                     await update.message.reply_text(
                         "❌ Неверный формат email.",
-                        reply_markup=reply_markup,
                         parse_mode="Markdown"
                     )
                     return CREATE_USER_FIELD
                     
             elif field == "hwidDeviceLimit":
+                user_is_super_admin = bool(
+                    update.effective_user and is_super_admin_user(update.effective_user.id)
+                )
+                if not user_is_super_admin:
+                    await update.message.reply_text(
+                        "❌ Ввод произвольного лимита устройств доступен только суперадмину. Используйте кнопки ниже.",
+                        parse_mode="Markdown"
+                    )
+                    return CREATE_USER_FIELD
                 try:
                     value = int(value)
                     if value < 0:
@@ -2676,12 +2699,8 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                         context.user_data["create_user"]["trafficLimitStrategy"] = "NO_RESET"
                         logger.info(f"Auto-setting trafficLimitStrategy=NO_RESET for user with hwidDeviceLimit={value}")
                 except ValueError:
-                    keyboard = [[InlineKeyboardButton("⏩ Пропустить", callback_data="skip_field")]]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
                     await update.message.reply_text(
                         "❌ Неверный формат числа. Введите целое число >= 0.",
-                        reply_markup=reply_markup,
                         parse_mode="Markdown"
                     )
                     return CREATE_USER_FIELD
@@ -2736,6 +2755,7 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     # For regular admins (non super-admins) append their Telegram ID to username
     creator = update.effective_user
+    is_super_admin = bool(creator and is_super_admin_user(creator.id))
     if creator and is_admin_user(creator.id):
         telegram_id_suffix = f"-{creator.id}"
         current_username = user_data.get("username", "")
@@ -2753,6 +2773,13 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Set default traffic limit (100 GB in bytes) if not provided
     if "trafficLimitBytes" not in user_data:
         user_data["trafficLimitBytes"] = 100 * 1024 * 1024 * 1024  # 100 GB in bytes
+    elif user_data.get("trafficLimitBytes") == 0 and not is_super_admin:
+        user_data["trafficLimitBytes"] = DEFAULT_NON_SUPERADMIN_LIMIT_GB * GB
+        logger.info(
+            "Non-super admin %s attempted to set unlimited traffic; defaulted to %s GB",
+            creator.id if creator else "unknown",
+            DEFAULT_NON_SUPERADMIN_LIMIT_GB,
+        )
     
     # Set default device limit if not provided
     if "hwidDeviceLimit" not in user_data:
@@ -3439,6 +3466,7 @@ async def handle_edit_field_selection(update: Update, context: ContextTypes.DEFA
     if data.startswith("edit_field_"):
         field = data[11:]  # убираем "edit_field_"
         user = context.user_data["edit_user"]
+        user_is_super_admin = bool(update.effective_user and is_super_admin_user(update.effective_user.id))
         
         if field not in user:
             await query.edit_message_text("❌ Поле не найдено в данных пользователя.")
@@ -3486,19 +3514,20 @@ async def handle_edit_field_selection(update: Update, context: ContextTypes.DEFA
                 ],
             ])
         elif field == "trafficLimitBytes":
-            message += "\nВведите лимит в ГБ (целое число). `0` — безлимит.\nИли выберите готовое значение ниже:"
-            preset_keyboard.extend([
-                [
-                    InlineKeyboardButton("0 (безлимит)", callback_data="edit_traffic_gb_0"),
-                    InlineKeyboardButton("10 ГБ", callback_data="edit_traffic_gb_10"),
-                    InlineKeyboardButton("50 ГБ", callback_data="edit_traffic_gb_50"),
-                ],
-                [
-                    InlineKeyboardButton("100 ГБ", callback_data="edit_traffic_gb_100"),
-                    InlineKeyboardButton("300 ГБ", callback_data="edit_traffic_gb_300"),
-                    InlineKeyboardButton("500 ГБ", callback_data="edit_traffic_gb_500"),
-                ],
-            ])
+            message += "\nВведите лимит в ГБ (целое число)."
+            if user_is_super_admin:
+                message += " `0` — безлимит (доступно только суперадмину)."
+            else:
+                message += " Безлимит доступен только суперадмину."
+            message += "\nИли выберите готовое значение ниже:"
+            traffic_row = [
+                InlineKeyboardButton("50 ГБ", callback_data="edit_traffic_gb_50"),
+                InlineKeyboardButton("100 ГБ", callback_data="edit_traffic_gb_100"),
+                InlineKeyboardButton("200 ГБ", callback_data="edit_traffic_gb_200"),
+            ]
+            preset_keyboard.append(traffic_row)
+            if user_is_super_admin:
+                preset_keyboard.append([InlineKeyboardButton("0 (безлимит)", callback_data="edit_traffic_gb_0")])
         elif field == "trafficLimitStrategy":
             message += "\nВыберите стратегию сброса: `NO_RESET` (без сброса), `DAY`, `WEEK`, `MONTH`."
             preset_keyboard.extend([
@@ -3613,6 +3642,10 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
                     gb = int(data.split("_")[-1])
                     bytes_value = 0 if gb == 0 else gb * 1024 * 1024 * 1024
                 except Exception:
+                    return EDIT_VALUE
+                user_is_super_admin = bool(update.effective_user and is_super_admin_user(update.effective_user.id))
+                if gb == 0 and not user_is_super_admin:
+                    await query.answer("Безлимит доступен только суперадмину.", show_alert=True)
                     return EDIT_VALUE
                 update_data = {"trafficLimitBytes": bytes_value}
                 result = await UserAPI.update_user(user["uuid"], update_data)
@@ -3740,6 +3773,19 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
             gb = int(value)
             if gb < 0:
                 raise ValueError("Traffic limit cannot be negative")
+            user_is_super_admin = bool(update.effective_user and is_super_admin_user(update.effective_user.id))
+            if gb == 0 and not user_is_super_admin:
+                keyboard = [
+                    [InlineKeyboardButton("🔙 Назад", callback_data=f"edit_{user['uuid']}")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(
+                    "❌ Безлимитный лимит доступен только суперадмину. Введите другое значение.",
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
+                )
+                return EDIT_USER
             # Convert GB to bytes (0 stays unlimited)
             value = 0 if gb == 0 else gb * 1024 * 1024 * 1024
         except ValueError:
@@ -3749,7 +3795,7 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_text(
-                "❌ Неверный формат. Введите целое число ГБ (0 — безлимит).",
+                "❌ Неверный формат. Введите целое число ГБ (0 — безлимит, доступен только суперадмину).",
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
