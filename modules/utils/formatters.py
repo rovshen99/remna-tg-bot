@@ -246,72 +246,61 @@ def format_user_details(user):
         return message
 
 def format_user_details_safe(user):
-    """Format user details for display without Markdown (safe fallback)"""
+    """Format user details for display with properly escaped Markdown."""
+    username = escape_markdown(user.get("username", ""))
+    uuid_value = escape_markdown(user.get("uuid", ""))
+    short_uuid = escape_markdown(user.get("shortUuid", "")) if user.get("shortUuid") else None
+    subscription_uuid = escape_markdown(user.get("subscriptionUuid", "")) if user.get("subscriptionUuid") else None
+    traffic_strategy = escape_markdown(user.get("trafficLimitStrategy", "")) if user.get("trafficLimitStrategy") else "—"
+    status_value = escape_markdown(user.get("status", "UNKNOWN"))
+
     try:
-        # Форматирование даты истечения
-        expire_date = datetime.fromisoformat(user['expireAt'].replace('Z', '+00:00'))
-        days_left = (expire_date - datetime.now().astimezone()).days
-        expire_status = "🟢" if days_left > 7 else "🟡" if days_left > 0 else "🔴"
-        expire_text = f"{user['expireAt'][:10]} ({days_left} дней)"
-    except Exception as e:
+        expire_raw = user.get("expireAt")
+        expire_date = datetime.fromisoformat(expire_raw.replace("Z", "+00:00")) if expire_raw else None
+        days_left = (expire_date - datetime.now().astimezone()).days if expire_date else None
+        if days_left is not None:
+            expire_status = "🟢" if days_left > 7 else "🟡" if days_left > 0 else "🔴"
+            expire_text = f"{expire_raw[:10]} ({days_left} дней)"
+        else:
+            raise ValueError("expireAt missing")
+    except Exception:
         expire_status = "📅"
-        expire_text = user['expireAt'][:10] if 'expireAt' in user and user['expireAt'] else "Не указано"
-    
-    # Форматирование статуса
-    status_emoji = "✅" if user["status"] == "ACTIVE" else "❌"
-    
-    message = f"👤 Пользователь: {user['username']}\n"
-    message += f"🆔 UUID: {user.get('uuid','')}\n"
-    if user.get('shortUuid'):
-        message += f"🔑 Короткий UUID: {user.get('shortUuid')}\n"
-    if user.get('subscriptionUuid'):
-        message += f"📝 UUID подписки: {user.get('subscriptionUuid')}\n\n"
-    
-    # URL подписки без какого-либо форматирования (без <pre> и без блоков кода)
-    # subscription_url = user.get('subscriptionUrl', '')
-    # if subscription_url:
-    #     message += f"🔗 URL подписки:\n{subscription_url}\n\n"
-    # else:
-    #     message += f"🔗 URL подписки: Не указан\n\n"
-    
-    message += f"📊 Статус: {status_emoji} {user['status']}\n"
-    message += f"📈 Трафик: {format_bytes(user['usedTrafficBytes'])}/{format_bytes(user['trafficLimitBytes'])}\n"
-    message += f"🔄 Стратегия сброса: {user['trafficLimitStrategy']}\n"
-    message += f"{expire_status} Истекает: {expire_text}\n\n"
-    
-    description = user.get('description')
+        expire_text = expire_raw[:10] if user.get("expireAt") else "Не указано"
+
+    status_emoji = "✅" if user.get("status") == "ACTIVE" else "❌"
+
+    message = f"👤 Пользователь: {username}\n"
+    message += f"🆔 UUID: {uuid_value}\n"
+    if short_uuid:
+        message += f"🔑 Короткий UUID: {short_uuid}\n"
+    if subscription_uuid:
+        message += f"📝 UUID подписки: {subscription_uuid}\n\n"
+
+    used_traffic = format_bytes(user.get("usedTrafficBytes"))
+    traffic_limit = format_bytes(user.get("trafficLimitBytes"))
+    message += f"📊 Статус: {status_emoji} {status_value}\n"
+    message += f"📈 Трафик: {used_traffic}/{traffic_limit}\n"
+    message += f"🔄 Стратегия сброса: {traffic_strategy}\n"
+    message += f"{expire_status} Истекает: {escape_markdown(expire_text)}\n\n"
+
+    description = user.get("description")
     if description:
         preferred = resolve_description_link(description)
-        links = parse_description_links(description)
-        note = links.get("text")
+        label = "Drive" if SUBSCRIPTION_DRIVE_LINK else "Happ"
         if preferred:
-            label = "Drive" if SUBSCRIPTION_DRIVE_LINK else "Happ"
             message += (
                 f"📝 Описание ({label}):\n"
-                f"`\n"
+                f"```\n"
                 f"{preferred}\n"
-                f"`\n"
+                f"```\n"
             )
         else:
-            message += f"📝 Описание: `{description}`\n"
-    
-    # if user.get('tag'):
-    #     message += f"🏷️ Тег: {user['tag']}\n"
-    #
-    # if user.get('telegramId'):
-    #     message += f"📱 Telegram ID: {user['telegramId']}\n"
-    #
-    # if user.get('email'):
-    #     message += f"📧 Email: {user['email']}\n"
-    
-    if user.get('hwidDeviceLimit'):
-        message += f"📱 Лимит устройств: {user['hwidDeviceLimit']}\n"
-    
-    # if user.get('createdAt'):
-    #     message += f"\n⏱️ Создан: {user['createdAt'][:10]}\n"
-    # if user.get('updatedAt'):
-    #     message += f"🔄 Обновлен: {user['updatedAt'][:10]}\n"
-    
+            message += f"📝 Описание: `{escape_markdown(description)}`\n"
+
+    hwid_limit = user.get("hwidDeviceLimit")
+    if hwid_limit:
+        message += f"📱 Лимит устройств: {hwid_limit}\n"
+
     return message
 
 def format_node_details(node):
