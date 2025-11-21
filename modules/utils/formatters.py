@@ -276,26 +276,32 @@ def format_user_details_safe(user):
     if subscription_uuid:
         message += f"📝 UUID подписки: {subscription_uuid}\n\n"
 
+    crypto_link = user.get('happ', {}).get('cryptoLink', '')
+    if crypto_link:
+        message += f"🔗 URL подписки:\n`{crypto_link}`\n\n"
+    else:
+        message += f"🔗 URL подписки: Не указан\n\n"
+
     used_traffic = format_bytes(user.get("usedTrafficBytes"))
     traffic_limit = format_bytes(user.get("trafficLimitBytes"))
     message += f"📊 Статус: {status_emoji} {status_value}\n"
     message += f"📈 Трафик: {used_traffic}/{traffic_limit}\n"
-    message += f"🔄 Стратегия сброса: {traffic_strategy}\n"
+    # message += f"🔄 Стратегия сброса: {traffic_strategy}\n"
     message += f"{expire_status} Истекает: {escape_markdown(expire_text)}\n\n"
 
-    description = user.get("description")
-    if description:
-        preferred = resolve_description_link(description)
-        label = "Drive" if SUBSCRIPTION_DRIVE_LINK else "Happ"
-        if preferred:
-            message += (
-                f"📝 Описание ({label}):\n"
-                f"```\n"
-                f"{preferred}\n"
-                f"```\n"
-            )
-        else:
-            message += f"📝 Описание: `{escape_markdown(description)}`\n"
+    # description = user.get("description")
+    # if description:
+    #     preferred = resolve_description_link(description)
+    #     label = "Drive" if SUBSCRIPTION_DRIVE_LINK else "Happ"
+    #     if preferred:
+    #         message += (
+    #             f"📝 Описание ({label}):\n"
+    #             f"```\n"
+    #             f"{preferred}\n"
+    #             f"```\n"
+    #         )
+    #     else:
+    #         message += f"📝 Описание: `{escape_markdown(description)}`\n"
 
     hwid_limit = user.get("hwidDeviceLimit")
     if hwid_limit:

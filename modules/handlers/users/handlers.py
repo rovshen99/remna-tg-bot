@@ -1251,15 +1251,17 @@ async def send_user_qrcode(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             await query.answer("❌ Пользователь не найден.", show_alert=True)
         return SELECTING_USER
 
-    link = resolve_description_link(user.get("description"))
-    if not link:
-        if query:
-            await query.answer("❌ В описании пользователя нет ссылки для QR-кода.", show_alert=True)
-        return SELECTING_USER
+    # link = resolve_description_link(user.get("description"))
+    # if not link:
+    #     if query:
+    #         await query.answer("❌ В описании пользователя нет ссылки для QR-кода.", show_alert=True)
+    #     return SELECTING_USER
 
-    qr_stream = _build_qr_code_payload(link)
+    crypto_link = user.get('happ', {}).get('cryptoLink', '')
+
+    qr_stream = _build_qr_code_payload(crypto_link)
     username = escape_markdown(user.get("username", ""))
-    caption_lines = [f"🔳 QR-код для `{username}`", f"`{escape_markdown(link)}`"]
+    caption_lines = [f"🔳 QR-код для `{username}`", f"`{escape_markdown(crypto_link)}`"]
     caption = "\n".join(caption_lines)
 
     target_message = query.message if query else update.effective_message
@@ -2895,20 +2897,22 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 except Exception as exc:
                     logger.error("Failed to update user description: %s", exc)
 
-        preferred_link = resolve_description_link(description_payload) if description_payload else None
-        if not preferred_link:
-            primary = drive_link if SUBSCRIPTION_DRIVE_LINK else encrypted_link
-            preferred_link = primary or drive_link or encrypted_link
-        if preferred_link:
-            label = "📁 Drive" if SUBSCRIPTION_DRIVE_LINK else "🔐 Happ"
-            message += f"\n📝 {label}:\n`{escape_markdown(preferred_link)}`\n"
-        if base_description:
-            message += f"✏️ Примечание: {escape_markdown(base_description)}\n"
+        # preferred_link = resolve_description_link(description_payload) if description_payload else None
+        # if not preferred_link:
+        #     primary = drive_link if SUBSCRIPTION_DRIVE_LINK else encrypted_link
+        #     preferred_link = primary or drive_link or encrypted_link
+        # if preferred_link:
+        #     label = "📁 Drive" if SUBSCRIPTION_DRIVE_LINK else "🔐 Happ"
+        #     message += f"\n📝 {label}:\n`{escape_markdown(preferred_link)}`\n"
+        # if base_description:
+        #     message += f"✏️ Примечание: {escape_markdown(base_description)}\n"
+        #
+        # if preferred_link:
+        #     link_for_qr = preferred_link
+        # elif not link_for_qr:
+        #     link_for_qr = drive_link or encrypted_link
 
-        if preferred_link:
-            link_for_qr = preferred_link
-        elif not link_for_qr:
-            link_for_qr = drive_link or encrypted_link
+        crypto_link = result.get('happ', {}).get('cryptoLink', '')
 
         for key in ("create_user", "create_user_fields", "current_field_index", "using_template", "search_type", "waiting_for"):
             context.user_data.pop(key, None)
@@ -2925,10 +2929,10 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
-        if link_for_qr:
-            qr_stream = _build_qr_code_payload(link_for_qr)
+        if crypto_link:
+            qr_stream = _build_qr_code_payload(crypto_link)
             username_md = escape_markdown(result.get('username', ''))
-            caption = f"🔳 QR-код для `{username_md}`\n`{escape_markdown(link_for_qr)}`"
+            caption = f"🔳 QR-код для `{username_md}`\n`{escape_markdown(crypto_link)}`"
             target_message = update.callback_query.message if update.callback_query else update.message
             if target_message:
                 await target_message.reply_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
