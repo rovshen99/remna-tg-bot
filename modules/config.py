@@ -162,7 +162,7 @@ USER_FIELDS = {
     'username': 'Имя пользователя',
     'trafficLimitBytes': 'Лимит трафика (в гигабайтах; 0 — безлимит)',
     'trafficLimitStrategy': 'Стратегия сброса трафика (NO_RESET, DAY, WEEK, MONTH)',
-    'expireAt': 'Дата истечения (YYYY-MM-DD)',
+    'expireAt': 'Дата истечения (YYYY-MM-DD или форматы вроде 30d/2m)',
     'description': 'Описание',
     'telegramId': 'Telegram ID',
     'email': 'Email',

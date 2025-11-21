@@ -1,3 +1,4 @@
+import calendar
 from datetime import datetime, timedelta
 import logging
 import random
@@ -206,6 +207,52 @@ def _extract_drive_file_id(description: Optional[str]) -> Optional[str]:
     except Exception as exc:
         logger.debug("Failed to parse Drive link '%s': %s", description, exc)
     return None
+
+
+def _add_months(base_date: datetime, months: int) -> datetime:
+    """Shift the given date by N months preserving the day where possible."""
+    total_months = (base_date.month - 1) + months
+    year = base_date.year + total_months // 12
+    month = total_months % 12 + 1
+    max_day = calendar.monthrange(year, month)[1]
+    day = min(base_date.day, max_day)
+    return base_date.replace(year=year, month=month, day=day)
+
+
+def _parse_expire_input(value: str, base_date: Optional[datetime] = None) -> str:
+    """
+    Parse expireAt input supporting absolute dates (YYYY-MM-DD) and relative Nd/Nm formats.
+    Returns ISO string suitable for API payloads.
+    """
+    if not value:
+        raise ValueError("Empty expireAt value")
+
+    text = value.strip()
+    if not text:
+        raise ValueError("Empty expireAt value")
+
+    lower_text = text.lower()
+    relative_match = re.fullmatch(r"(\d+)\s*([dm])", lower_text)
+
+    if relative_match:
+        amount = int(relative_match.group(1))
+        if amount <= 0:
+            raise ValueError("Relative expireAt value should be positive")
+
+        unit = relative_match.group(2)
+        base = base_date or datetime.now()
+        base = base.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        if unit == "d":
+            target = base + timedelta(days=amount)
+        else:  # unit == "m"
+            target = _add_months(base, amount)
+
+        return target.strftime("%Y-%m-%dT00:00:00.000Z")
+
+    # Absolute date fallback
+    date_obj = datetime.strptime(text, "%Y-%m-%d")
+    return date_obj.strftime("%Y-%m-%dT00:00:00.000Z")
 
 
 def _build_qr_code_payload(data: str) -> BytesIO:
@@ -755,11 +802,10 @@ class DataValidators:
             return True, "", ""  # Дата не обязательна
         
         try:
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-            formatted_date = date_obj.strftime("%Y-%m-%dT00:00:00.000Z")
+            formatted_date = _parse_expire_input(date_str)
             return True, "", formatted_date
         except ValueError:
-            return False, "Неверный формат даты. Используйте YYYY-MM-DD", ""
+            return False, "Неверный формат даты. Используйте YYYY-MM-DD или форматы вроде 30d/2m", ""
     
     @staticmethod
     def validate_traffic_limit(traffic_str: str) -> tuple[bool, str, int]:
@@ -1730,9 +1776,13 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Process the value based on the field
         if field == "expireAt":
             try:
-                # Validate date format
-                date_obj = datetime.strptime(value, "%Y-%m-%d")
-                value = date_obj.strftime("%Y-%m-%dT00:00:00.000Z")
+                base_date = None
+                if user.get("expireAt"):
+                    try:
+                        base_date = datetime.fromisoformat(user["expireAt"].replace("Z", "+00:00"))
+                    except Exception:
+                        base_date = None
+                value = _parse_expire_input(value, base_date=base_date)
             except ValueError:
                 keyboard = [
                     [InlineKeyboardButton("🔙 Назад", callback_data=f"edit_{user['uuid']}")]
@@ -1740,7 +1790,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
                 await update.message.reply_text(
-                    "❌ Неверный формат даты. Используйте YYYY-MM-DD.",
+                    "❌ Неверный формат. Введите дату как `YYYY-MM-DD`, либо относительное значение вроде `30d` или `2m`.",
                     reply_markup=reply_markup,
                     parse_mode="Markdown"
                 )
@@ -2079,7 +2129,7 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = f"📅 *Выберите дату истечения*{template_info}\n\n"
         message += "Ниже представлены доступные варианты (30 или 60 дней)."
         if user_is_super_admin:
-            message += " Доступен пресет «Безлимит (80 лет)», а также можно вручную ввести дату в формате YYYY-MM-DD."
+            message += " Доступен пресет «Безлимит (80 лет)», а также можно вручную ввести дату в формате YYYY-MM-DD или относительные значения вроде 30d/2m."
         else:
             message += " Ввод произвольной даты недоступен для вашего уровня доступа."
         
@@ -2305,6 +2355,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
     """Handle user input when creating a user"""
     query = update.callback_query
     context.user_data.setdefault("create_user", {})
+    creation_data = context.user_data["create_user"]
 
     if query:
         await query.answer()
@@ -2611,22 +2662,17 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     return CREATE_USER_FIELD
             
             elif field == "expireAt":
-                user_is_super_admin = bool(
-                    update.effective_user and is_super_admin_user(update.effective_user.id)
-                )
-                if not user_is_super_admin:
-                    await update.message.reply_text(
-                        "❌ Ввод произвольной даты доступен только суперадмину. Используйте кнопки с готовыми вариантами.",
-                        parse_mode="Markdown"
-                    )
-                    return CREATE_USER_FIELD
                 try:
-                    # Validate date format
-                    date_obj = datetime.strptime(value, "%Y-%m-%d")
-                    value = date_obj.strftime("%Y-%m-%dT00:00:00.000Z")
+                    base_date = None
+                    if creation_data.get("expireAt"):
+                        try:
+                            base_date = datetime.fromisoformat(creation_data["expireAt"].replace("Z", "+00:00"))
+                        except Exception:
+                            base_date = None
+                    value = _parse_expire_input(value, base_date=base_date)
                 except ValueError:
                     await update.message.reply_text(
-                        "❌ Неверный формат даты. Используйте YYYY-MM-DD.",
+                        "❌ Неверный формат. Введите дату как `YYYY-MM-DD`, либо относительное значение вроде `30d` или `2m`.",
                         parse_mode="Markdown"
                     )
                     return CREATE_USER_FIELD
@@ -3503,7 +3549,7 @@ async def handle_edit_field_selection(update: Update, context: ContextTypes.DEFA
         # Add preset inline buttons for specific fields
         preset_keyboard = []
         if field == "expireAt":
-            message += "\nВы можете ввести дату в формате `YYYY-MM-DD` для установки точной даты,\n"
+            message += "\nВы можете ввести дату в формате `YYYY-MM-DD` или относительные значения вроде `30d`/`2m` для установки точной даты,\n"
             message += "или нажать на кнопку, чтобы добавить дни к текущему сроку:\n"
             preset_keyboard.extend([
                 [
@@ -3755,9 +3801,13 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
     # Process the value based on the field
     if field == "expireAt":
         try:
-            # Validate date format
-            date_obj = datetime.strptime(value, "%Y-%m-%d")
-            value = date_obj.strftime("%Y-%m-%dT00:00:00.000Z")
+            base_date = None
+            if user.get("expireAt"):
+                try:
+                    base_date = datetime.fromisoformat(user["expireAt"].replace("Z", "+00:00"))
+                except Exception:
+                    base_date = None
+            value = _parse_expire_input(value, base_date=base_date)
         except ValueError:
             keyboard = [
                 [InlineKeyboardButton("🔙 Назад", callback_data=f"edit_{user['uuid']}")]
@@ -3765,7 +3815,7 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_text(
-                "❌ Неверный формат даты. Используйте YYYY-MM-DD.",
+                "❌ Неверный формат. Введите дату как `YYYY-MM-DD`, либо относительное значение вроде `30d` или `2m`.",
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
