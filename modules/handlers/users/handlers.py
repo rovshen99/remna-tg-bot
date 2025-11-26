@@ -30,6 +30,8 @@ from modules.config import (
     SUBSCRIPTION_DRIVE_LINK,
     SUBSCRIPTION_SCRIPT_URL,
 )
+from modules.services.expiration_notifier import extend_user_subscription_and_reset
+
 
 # Константы для callback_data
 class CallbackData:
@@ -1535,7 +1537,7 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
         action_parts = data.split("_")
         if len(action_parts) >= 4:
             action = action_parts[2]
-            admin_only_actions = {"edit", "disable", "enable", "reset", "revoke", "delete", "hwid"}
+            admin_only_actions = {"edit", "disable", "enable", "reset", "revoke", "delete", "hwid", "extend"}
             if not has_user_access and action in admin_only_actions:
                 await query.answer(INSUFFICIENT_PERMISSIONS_MESSAGE, show_alert=True)
                 return SELECTING_USER
@@ -1546,6 +1548,29 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 return await start_edit_user(update, context, uuid)
             elif action == "refresh":
                 await show_user_details(update, context, uuid)
+                return SELECTING_USER
+            elif action == "extend":
+                allow_any_owner = bool(context.user_data.get('is_superadmin'))
+                success, msg = await extend_user_subscription_and_reset(
+                    uuid, update.effective_user.id, allow_any_owner=allow_any_owner
+                )
+                await query.answer(msg, show_alert=not success)
+                if success:
+                    user_cache.invalidate_user(uuid)
+                    user_cache.invalidate_all_users()
+                    back_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад к пользователю", callback_data=f"view_{uuid}")]])
+                    try:
+                        await query.edit_message_text(text=msg, reply_markup=back_markup, parse_mode="Markdown")
+                    except Exception:
+                        try:
+                            await context.bot.send_message(
+                                chat_id=query.message.chat_id,
+                                text=msg,
+                                parse_mode="Markdown",
+                                reply_markup=back_markup,
+                            )
+                        except Exception:
+                            pass
                 return SELECTING_USER
             elif action == "disable":
                 context.user_data["action"] = "disable"

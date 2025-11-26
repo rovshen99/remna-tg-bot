@@ -244,6 +244,10 @@ class SelectionHelper:
             rows.append([InlineKeyboardButton("🔄 Обновить данные", callback_data=f"{action_prefix}_refresh_{user_uuid}")])
 
         rows.append([
+            InlineKeyboardButton("🔄 +30д и сброс", callback_data=f"{action_prefix}_extend_{user_uuid}")
+        ])
+
+        rows.append([
             InlineKeyboardButton("🔳 QR code", callback_data=f"{action_prefix}_qrcode_{user_uuid}")
         ])
 
