@@ -27,6 +27,7 @@ from modules.handlers.hosts import show_hosts_menu
 from modules.handlers.inbounds import show_inbounds_menu, handle_inbounds_menu
 from modules.handlers.bulk import show_bulk_menu
 from modules.handlers.core.start import show_main_menu
+from modules.handlers.users.handlers import user_cache
 from modules.handlers.core.language import (
     LANGUAGE_MENU_CALLBACK,
     LANGUAGE_SELECT_PREFIX,
@@ -100,6 +101,8 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
         )
         await query.answer(msg, show_alert=not success)
         if success and query.message:
+            user_cache.invalidate_user(uuid)
+            user_cache.invalidate_all_users()
             try:
                 await context.bot.send_message(
                     chat_id=query.message.chat_id,

@@ -1294,6 +1294,7 @@
   "🗑️ Удаление пользователя `{escape_markdown(username)}`...\\n\\nПожалуйста, подождите...": "🗑️ Deleting user `{escape_markdown(username)}`...\\n\\nPlease wait...",
   "🔄 +30д и сброс — {username}": "🔄 +30d & reset — {username}",
   "✅ Продлено до {new_date[:10]} и сброшен трафик.": "✅ Extended to {new_date[:10]} and traffic reset.",
+  "✅ Продлено до {escape_markdown(new_expire[:10])} и сброшен трафик.": "✅ Extended to {escape_markdown(new_expire[:10])} and traffic reset.",
   "❌ Не удалось обновить дату истечения.": "❌ Failed to update expiration date.",
   "❌ Не удалось сбросить трафик (дата продлена).": "❌ Failed to reset traffic (date extended).",
   "❌ Пользователь не найден.": "❌ User not found.",

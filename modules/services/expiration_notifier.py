@@ -413,7 +413,7 @@ async def extend_user_subscription_and_reset(
         logger.error("Failed to reset traffic for %s: %s", user_uuid, exc)
         return False, "❌ Не удалось сбросить трафик (дата продлена)."
 
-    return True, f"✅ Продлено до {new_expire[:10]} и сброшен трафик."
+    return True, f"✅ Продлено до {escape_markdown(new_expire[:10])} и сброшен трафик."
 
 
 def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
