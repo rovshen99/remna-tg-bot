@@ -219,6 +219,12 @@ def _add_months(base_date: datetime, months: int) -> datetime:
     return base_date.replace(year=year, month=month, day=day)
 
 
+def _format_expire_datetime(dt: datetime, padding_minutes: int = 10) -> str:
+    """Format expire datetime with a small padding to avoid immediate expiration."""
+    padded = dt + timedelta(minutes=padding_minutes)
+    return padded.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
 def _parse_expire_input(value: str, base_date: Optional[datetime] = None) -> str:
     """
     Parse expireAt input supporting absolute dates (YYYY-MM-DD) and relative Nd/Nm formats.
@@ -248,11 +254,12 @@ def _parse_expire_input(value: str, base_date: Optional[datetime] = None) -> str
         else:  # unit == "m"
             target = _add_months(base, amount)
 
-        return target.strftime("%Y-%m-%dT00:00:00.000Z")
+        return _format_expire_datetime(target)
 
     # Absolute date fallback
     date_obj = datetime.strptime(text, "%Y-%m-%d")
-    return date_obj.strftime("%Y-%m-%dT00:00:00.000Z")
+    start_of_day = datetime.combine(date_obj.date(), datetime.min.time())
+    return _format_expire_datetime(start_of_day)
 
 
 def _build_qr_code_payload(data: str) -> BytesIO:
@@ -2466,7 +2473,8 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                 # Конвертируем дату в нужный формат
                 try:
                     date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-                    value = date_obj.strftime("%Y-%m-%dT00:00:00.000Z")
+                    start_of_day = datetime.combine(date_obj.date(), datetime.min.time())
+                    value = _format_expire_datetime(start_of_day)
                     context.user_data["create_user"][field] = value
                     
                     # Показываем сообщение о выбранной дате
@@ -2862,7 +2870,8 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if "expireAt" not in user_data:
         # Default to 30 days from now
-        user_data["expireAt"] = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%dT00:00:00.000Z")
+        base_expire = (datetime.now() + timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+        user_data["expireAt"] = _format_expire_datetime(base_expire)
 
     # Log data for debugging
     logger.debug(f"Creating user with data: {user_data}")
@@ -3665,7 +3674,7 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
                 if base_date is None:
                     base_date = datetime.now().astimezone()
 
-                new_date = (base_date + timedelta(days=days)).strftime("%Y-%m-%dT00:00:00.000Z")
+                new_date = _format_expire_datetime(base_date + timedelta(days=days))
                 update_data = {"expireAt": new_date}
 
                 result = await UserAPI.update_user(user["uuid"], update_data)
