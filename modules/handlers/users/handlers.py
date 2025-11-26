@@ -2160,18 +2160,12 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        if update.callback_query:
-            await update.effective_chat.send_message(
-                text=message,
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+        if query_for_edit:
+            ok = await safe_edit_message(query_for_edit, message, reply_markup=reply_markup, parse_mode="Markdown")
+            if not ok and update.effective_chat:
+                await update.effective_chat.send_message(text=message, reply_markup=reply_markup, parse_mode="Markdown")
         else:
-            await update.message.reply_text(
-                text=message,
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+            await update.message.reply_text(text=message, reply_markup=reply_markup, parse_mode="Markdown")
         
         return CREATE_USER_FIELD
     
@@ -2197,17 +2191,11 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         if query_for_edit:
-            await query_for_edit.edit_message_text(
-                text=message,
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+            ok = await safe_edit_message(query_for_edit, message, reply_markup=reply_markup, parse_mode="Markdown")
+            if not ok and update.effective_chat:
+                await update.effective_chat.send_message(text=message, reply_markup=reply_markup, parse_mode="Markdown")
         else:
-            await update.message.reply_text(
-                text=message,
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+            await update.message.reply_text(text=message, reply_markup=reply_markup, parse_mode="Markdown")
         
         return CREATE_USER_FIELD
 
@@ -2228,17 +2216,11 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         if query_for_edit:
-            await query_for_edit.edit_message_text(
-                text=message,
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+            ok = await safe_edit_message(query_for_edit, message, reply_markup=reply_markup, parse_mode="Markdown")
+            if not ok and update.effective_chat:
+                await update.effective_chat.send_message(text=message, reply_markup=reply_markup, parse_mode="Markdown")
         else:
-            await update.message.reply_text(
-                text=message,
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+            await update.message.reply_text(text=message, reply_markup=reply_markup, parse_mode="Markdown")
         
         return CREATE_USER_FIELD
     

@@ -158,6 +158,9 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
                     f"На ближайшие {EXPIRATION_NOTIFICATION_DAYS} дн. "
                     f"{'нет пользователей с истекающей подпиской.' if is_superadmin else 'нет ваших пользователей с истекающей подпиской.'}"
                 ),
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")]]
+                ),
             )
         return MAIN_MENU
 
