@@ -159,6 +159,7 @@ async def _delete_active_prompt_message(context: ContextTypes.DEFAULT_TYPE):
     """Delete the last prompt message sent during user creation, if any."""
     await _clear_prompt_message(context, "active_create_message")
 
+
 async def _delete_active_edit_message(context: ContextTypes.DEFAULT_TYPE):
     """Delete the last edit prompt message (for editing fields) if present."""
     active = context.user_data.pop("active_edit_message", None)
@@ -216,6 +217,58 @@ async def _edit_prompt_or_send(
     target_chat = update.effective_chat
     if target_chat:
         sent = await target_chat.send_message(text=text, reply_markup=reply_markup, parse_mode=parse_mode)
+        await _set_prompt_message(context, sent.chat_id, sent.message_id, key)
+
+
+async def _edit_or_replace_photo_prompt(
+    context: ContextTypes.DEFAULT_TYPE,
+    key: str,
+    photo: BytesIO | str,
+    caption: str,
+    reply_markup=None,
+    parse_mode: str | None = None,
+) -> bool:
+    """Try to edit existing photo prompt; if not possible, clear and return False."""
+    active = context.user_data.get(key)
+    if not active:
+        return False
+    try:
+        await context.bot.edit_message_media(
+            chat_id=active["chat_id"],
+            message_id=active["message_id"],
+            media=InputMediaPhoto(media=photo, caption=caption, parse_mode=parse_mode),
+            reply_markup=reply_markup,
+        )
+        return True
+    except Exception as exc:
+        logger.debug("Failed to edit photo prompt for key %s: %s", key, exc)
+        await _clear_prompt_message(context, key)
+        return False
+
+
+async def _send_or_edit_prompt_photo(
+    context: ContextTypes.DEFAULT_TYPE,
+    update: Update,
+    key: str,
+    photo,
+    caption: str,
+    reply_markup=None,
+    parse_mode: str | None = None,
+) -> None:
+    """Replace previous photo prompt for key or send a new one."""
+    replaced = await _edit_or_replace_photo_prompt(context, key, photo, caption, reply_markup, parse_mode)
+    if replaced:
+        return
+
+    await _clear_prompt_message(context, key)
+    target_chat = update.effective_chat
+    if target_chat:
+        sent = await target_chat.send_photo(
+            photo=photo,
+            caption=caption,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+        )
         await _set_prompt_message(context, sent.chat_id, sent.message_id, key)
 
 
@@ -963,6 +1016,9 @@ async def handle_users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    # Clear QR prompt when navigating within users menu
+    await _clear_prompt_message(context, "qr_message")
+
     data = query.data
 
     try:
@@ -1330,6 +1386,8 @@ async def show_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         logger.debug(f"show_user_details called for uuid={uuid}")
     except Exception:
         pass
+    # Clear QR prompt when opening user details
+    await _clear_prompt_message(context, "qr_message")
     user = await user_cache.get_user(uuid)
     context.user_data.pop("search_type", None)
     context.user_data.pop("waiting_for", None)
@@ -1408,11 +1466,18 @@ async def send_user_qrcode(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     caption_lines = [f"🔳 QR-код для `{username}`", f"`{escape_markdown(crypto_link)}`"]
     caption = "\n".join(caption_lines)
 
-    target_message = query.message if query else update.effective_message
-    if target_message:
-        await target_message.reply_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
-    elif update.effective_chat:
-        await update.effective_chat.send_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
+    if update.effective_chat:
+        try:
+            await _send_or_edit_prompt_photo(
+                context,
+                update,
+                "qr_message",
+                qr_stream,
+                caption,
+                parse_mode="Markdown",
+            )
+        except Exception as exc:
+            logger.warning("Unable to send QR code photo: %s", exc)
     else:
         logger.warning("Unable to send QR code photo: no target message or chat")
 
@@ -1424,6 +1489,9 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not check_authorization(update.effective_user):
         await update.callback_query.answer("⛔ Вы не авторизованы для использования этого бота.", show_alert=True)
         return ConversationHandler.END
+
+    # Clear QR prompt when leaving QR view to other actions
+    await _clear_prompt_message(context, "qr_message")
     
     query = update.callback_query
     await query.answer()
@@ -3152,10 +3220,13 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
             username_md = escape_markdown(result.get('username', ''))
             caption = f"🔳 QR-код для `{username_md}`\n`{escape_markdown(crypto_link)}`"
             try:
-                await target_chat.send_photo(
-                    photo=qr_stream,
-                    caption=caption,
-                    parse_mode="Markdown"
+                await _send_or_edit_prompt_photo(
+                    context,
+                    update,
+                    "qr_message",
+                    qr_stream,
+                    caption,
+                    parse_mode="Markdown",
                 )
             except Exception as exc:
                 logger.warning("Unable to send QR code photo after user creation: %s", exc)
@@ -3647,6 +3718,9 @@ async def start_edit_user(update: Update, context: ContextTypes.DEFAULT_TYPE, uu
     if not check_authorization(update.effective_user):
         await update.callback_query.answer("⛔ Вы не авторизованы для использования этого бота.", show_alert=True)
         return ConversationHandler.END
+
+    # Clear QR prompt when entering edit flow
+    await _clear_prompt_message(context, "qr_message")
     
     # Получаем данные пользователя
     user = await UserAPI.get_user_by_uuid(uuid)
