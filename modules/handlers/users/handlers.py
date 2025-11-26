@@ -1465,6 +1465,16 @@ async def send_user_qrcode(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     username = escape_markdown(user.get("username", ""))
     caption_lines = [f"🔳 QR-код для `{username}`", f"`{escape_markdown(crypto_link)}`"]
     caption = "\n".join(caption_lines)
+    back_markup = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("🔙 Назад к пользователю", callback_data=f"view_{uuid}")]]
+    )
+
+    # Удаляем карточку пользователя, чтобы не дублировать сообщения при показе QR
+    if query and query.message:
+        try:
+            await query.message.delete()
+        except Exception as exc:
+            logger.debug("Failed to delete user card before showing QR: %s", exc)
 
     if update.effective_chat:
         try:
@@ -1474,6 +1484,7 @@ async def send_user_qrcode(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 "qr_message",
                 qr_stream,
                 caption,
+                reply_markup=back_markup,
                 parse_mode="Markdown",
             )
         except Exception as exc:
