@@ -1593,6 +1593,9 @@ async def handle_action_confirmation(update: Update, context: ContextTypes.DEFAU
             action_text = "отозвана подписка"
         
         if result:
+            # Ensure subsequent views use fresh data
+            user_cache.invalidate_user(uuid)
+            user_cache.invalidate_all_users()
             keyboard = [
                 [InlineKeyboardButton("👁️ Просмотр пользователя", callback_data=f"view_{uuid}")],
                 [InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_list")]
@@ -3809,12 +3812,8 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
     # Process the value based on the field
     if field == "expireAt":
         try:
-            base_date = None
-            if user.get("expireAt"):
-                try:
-                    base_date = datetime.fromisoformat(user["expireAt"].replace("Z", "+00:00"))
-                except Exception:
-                    base_date = None
+            # For manual input, relative values should be counted from "now", not from the current expire date
+            base_date = datetime.now().astimezone()
             value = _parse_expire_input(value, base_date=base_date)
         except ValueError:
             keyboard = [
