@@ -2974,33 +2974,38 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
         for key in ("create_user", "create_user_fields", "current_field_index", "using_template", "search_type", "waiting_for"):
             context.user_data.pop(key, None)
 
-        if crypto_link:
+        target_chat = update.effective_chat
+
+        # Clean previous prompt message to avoid clutter/ordering issues
+        if update.callback_query and update.callback_query.message:
+            try:
+                await update.callback_query.message.delete()
+            except Exception as exc:
+                logger.debug("Failed to delete previous message after user creation: %s", exc)
+
+        # Send QR/crypto link first (separate message), then the success card with buttons
+        if crypto_link and target_chat:
             qr_stream = _build_qr_code_payload(crypto_link)
             username_md = escape_markdown(result.get('username', ''))
             caption = f"🔳 QR-код для `{username_md}`\n`{escape_markdown(crypto_link)}`"
-            target_chat = update.effective_chat
-            if target_chat:
+            try:
                 await target_chat.send_photo(
                     photo=qr_stream,
                     caption=caption,
                     parse_mode="Markdown"
                 )
-            else:
-                logger.warning("Unable to send QR code photo after user creation: no chat")
+            except Exception as exc:
+                logger.warning("Unable to send QR code photo after user creation: %s", exc)
 
-        # Send/replace the success message with buttons (keep it as text for reliable callbacks)
-        if update.callback_query:
-            await update.callback_query.edit_message_text(
+        # Now send the success message with inline buttons
+        if target_chat:
+            await target_chat.send_message(
                 text=message,
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
         else:
-            await update.message.reply_text(
-                text=message,
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+            logger.warning("No target chat to send creation confirmation")
 
         if created_uuid:
             try:
