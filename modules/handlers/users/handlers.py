@@ -157,13 +157,7 @@ async def _delete_message_safe(bot, chat_id, message_id):
 
 async def _delete_active_prompt_message(context: ContextTypes.DEFAULT_TYPE):
     """Delete the last prompt message sent during user creation, if any."""
-    active = context.user_data.pop("active_create_message", None)
-    if not active:
-        return
-    try:
-        await context.bot.delete_message(chat_id=active["chat_id"], message_id=active["message_id"])
-    except Exception as exc:
-        logger.debug("Failed to delete previous prompt message: %s", exc)
+    await _clear_prompt_message(context, "active_create_message")
 
 async def _delete_active_edit_message(context: ContextTypes.DEFAULT_TYPE):
     """Delete the last edit prompt message (for editing fields) if present."""
@@ -174,6 +168,55 @@ async def _delete_active_edit_message(context: ContextTypes.DEFAULT_TYPE):
         await context.bot.delete_message(chat_id=active["chat_id"], message_id=active["message_id"])
     except Exception as exc:
         logger.debug("Failed to delete previous edit message: %s", exc)
+
+
+async def _set_prompt_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, key: str) -> None:
+    """Store the last prompt message id for a given key (e.g., 'create' or 'edit')."""
+    context.user_data[key] = {"chat_id": chat_id, "message_id": message_id}
+
+
+async def _clear_prompt_message(context: ContextTypes.DEFAULT_TYPE, key: str) -> None:
+    """Delete and clear the last prompt message for a given key."""
+    active = context.user_data.pop(key, None)
+    if not active:
+        return
+    try:
+        await context.bot.delete_message(chat_id=active["chat_id"], message_id=active["message_id"])
+    except Exception as exc:
+        logger.debug("Failed to delete prompt message for key %s: %s", key, exc)
+
+
+async def _edit_prompt_or_send(
+    context: ContextTypes.DEFAULT_TYPE,
+    update: Update,
+    key: str,
+    text: str,
+    reply_markup=None,
+    parse_mode: str | None = None,
+) -> None:
+    """
+    Try to edit the stored prompt for `key`; on failure delete it and send a new one.
+    """
+    active = context.user_data.get(key)
+    if active:
+        try:
+            await context.bot.edit_message_text(
+                chat_id=active["chat_id"],
+                message_id=active["message_id"],
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode,
+            )
+            return
+        except Exception as exc:
+            logger.debug("Failed to edit prompt for key %s: %s", key, exc)
+            await _clear_prompt_message(context, key)
+
+    # Send new prompt
+    target_chat = update.effective_chat
+    if target_chat:
+        sent = await target_chat.send_message(text=text, reply_markup=reply_markup, parse_mode=parse_mode)
+        await _set_prompt_message(context, sent.chat_id, sent.message_id, key)
 
 
 async def _edit_cached_message(context: ContextTypes.DEFAULT_TYPE, text: str, reply_markup=None, parse_mode: str | None = None) -> bool:
@@ -1945,6 +1988,8 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @check_admin
 async def start_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start creating a new user - first show template selection"""
+    await _clear_prompt_message(context, "active_edit_message")
+    await _clear_prompt_message(context, "active_create_message")
     # Clear any previous user creation data
     context.user_data.pop("create_user", None)
     context.user_data.pop("create_user_fields", None)
@@ -3754,12 +3799,8 @@ async def handle_edit_field_selection(update: Update, context: ContextTypes.DEFA
             parse_mode="Markdown"
         )
         if query.message:
-            context.user_data["active_edit_message"] = {
-                "chat_id": query.message.chat_id,
-                "message_id": query.message.message_id,
-            }
-            # delete any prior edit prompt message to avoid duplicates
-            await _delete_active_edit_message(context)
+            await _clear_prompt_message(context, "active_edit_message")
+            await _set_prompt_message(context, query.message.chat_id, query.message.message_id, "active_edit_message")
         
         return EDIT_VALUE
 
