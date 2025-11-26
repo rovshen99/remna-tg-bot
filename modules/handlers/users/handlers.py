@@ -147,14 +147,24 @@ GB = 1024 * 1024 * 1024
 DEFAULT_NON_SUPERADMIN_LIMIT_GB = 200
 
 
-def _edit_cached_message(context: ContextTypes.DEFAULT_TYPE, text: str, reply_markup=None, parse_mode: str | None = None) -> bool:
+async def _delete_active_prompt_message(context: ContextTypes.DEFAULT_TYPE):
+    """Delete the last prompt message sent during user creation, if any."""
+    active = context.user_data.pop("active_create_message", None)
+    if not active:
+        return
+    try:
+        await context.bot.delete_message(chat_id=active["chat_id"], message_id=active["message_id"])
+    except Exception as exc:
+        logger.debug("Failed to delete previous prompt message: %s", exc)
+
+
+async def _edit_cached_message(context: ContextTypes.DEFAULT_TYPE, text: str, reply_markup=None, parse_mode: str | None = None) -> bool:
     """Try to edit the last cached prompt message; return True on success."""
     cached = context.user_data.get("active_edit_message")
     if not cached:
         return False
     try:
-        bot = context.bot
-        bot.edit_message_text(
+        await context.bot.edit_message_text(
             chat_id=cached["chat_id"],
             message_id=cached["message_id"],
             text=text,
@@ -2182,10 +2192,25 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if query_for_edit:
             ok = await safe_edit_message(query_for_edit, message, reply_markup=reply_markup, parse_mode="Markdown")
-            if not ok and update.effective_chat:
-                await update.effective_chat.send_message(text=message, reply_markup=reply_markup, parse_mode="Markdown")
+            if ok and query_for_edit.message:
+                context.user_data["active_create_message"] = {
+                    "chat_id": query_for_edit.message.chat_id,
+                    "message_id": query_for_edit.message.message_id,
+                }
+            elif update.effective_chat:
+                await _delete_active_prompt_message(context)
+                sent = await update.effective_chat.send_message(text=message, reply_markup=reply_markup, parse_mode="Markdown")
+                context.user_data["active_create_message"] = {
+                    "chat_id": sent.chat_id,
+                    "message_id": sent.message_id,
+                }
         else:
-            await update.message.reply_text(text=message, reply_markup=reply_markup, parse_mode="Markdown")
+            await _delete_active_prompt_message(context)
+            sent = await update.message.reply_text(text=message, reply_markup=reply_markup, parse_mode="Markdown")
+            context.user_data["active_create_message"] = {
+                "chat_id": sent.chat_id,
+                "message_id": sent.message_id,
+            }
         
         return CREATE_USER_FIELD
     
@@ -2212,10 +2237,25 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if query_for_edit:
             ok = await safe_edit_message(query_for_edit, message, reply_markup=reply_markup, parse_mode="Markdown")
-            if not ok and update.effective_chat:
-                await update.effective_chat.send_message(text=message, reply_markup=reply_markup, parse_mode="Markdown")
+            if ok and query_for_edit.message:
+                context.user_data["active_create_message"] = {
+                    "chat_id": query_for_edit.message.chat_id,
+                    "message_id": query_for_edit.message.message_id,
+                }
+            elif update.effective_chat:
+                await _delete_active_prompt_message(context)
+                sent = await update.effective_chat.send_message(text=message, reply_markup=reply_markup, parse_mode="Markdown")
+                context.user_data["active_create_message"] = {
+                    "chat_id": sent.chat_id,
+                    "message_id": sent.message_id,
+                }
         else:
-            await update.message.reply_text(text=message, reply_markup=reply_markup, parse_mode="Markdown")
+            await _delete_active_prompt_message(context)
+            sent = await update.message.reply_text(text=message, reply_markup=reply_markup, parse_mode="Markdown")
+            context.user_data["active_create_message"] = {
+                "chat_id": sent.chat_id,
+                "message_id": sent.message_id,
+            }
         
         return CREATE_USER_FIELD
 
@@ -2237,10 +2277,25 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if query_for_edit:
             ok = await safe_edit_message(query_for_edit, message, reply_markup=reply_markup, parse_mode="Markdown")
-            if not ok and update.effective_chat:
-                await update.effective_chat.send_message(text=message, reply_markup=reply_markup, parse_mode="Markdown")
+            if ok and query_for_edit.message:
+                context.user_data["active_create_message"] = {
+                    "chat_id": query_for_edit.message.chat_id,
+                    "message_id": query_for_edit.message.message_id,
+                }
+            elif update.effective_chat:
+                await _delete_active_prompt_message(context)
+                sent = await update.effective_chat.send_message(text=message, reply_markup=reply_markup, parse_mode="Markdown")
+                context.user_data["active_create_message"] = {
+                    "chat_id": sent.chat_id,
+                    "message_id": sent.message_id,
+                }
         else:
-            await update.message.reply_text(text=message, reply_markup=reply_markup, parse_mode="Markdown")
+            await _delete_active_prompt_message(context)
+            sent = await update.message.reply_text(text=message, reply_markup=reply_markup, parse_mode="Markdown")
+            context.user_data["active_create_message"] = {
+                "chat_id": sent.chat_id,
+                "message_id": sent.message_id,
+            }
         
         return CREATE_USER_FIELD
     
@@ -2273,12 +2328,22 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
+            if query_for_edit.message:
+                context.user_data["active_create_message"] = {
+                    "chat_id": query_for_edit.message.chat_id,
+                    "message_id": query_for_edit.message.message_id,
+                }
         else:
-            await update.message.reply_text(
+            await _delete_active_prompt_message(context)
+            sent = await update.message.reply_text(
                 text=message,
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
+            context.user_data["active_create_message"] = {
+                "chat_id": sent.chat_id,
+                "message_id": sent.message_id,
+            }
         
         return CREATE_USER_FIELD
         
@@ -2301,12 +2366,22 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
+            if update.callback_query.message:
+                context.user_data["active_create_message"] = {
+                    "chat_id": update.callback_query.message.chat_id,
+                    "message_id": update.callback_query.message.message_id,
+                }
         else:
-            await update.message.reply_text(
+            await _delete_active_prompt_message(context)
+            sent = await update.message.reply_text(
                 text=message,
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
+            context.user_data["active_create_message"] = {
+                "chat_id": sent.chat_id,
+                "message_id": sent.message_id,
+            }
         
         return CREATE_USER_FIELD
 
@@ -2354,12 +2429,22 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup,
             parse_mode="Markdown"
         )
+        if update.callback_query.message:
+            context.user_data["active_create_message"] = {
+                "chat_id": update.callback_query.message.chat_id,
+                "message_id": update.callback_query.message.message_id,
+            }
     else:
-        await update.message.reply_text(
+        await _delete_active_prompt_message(context)
+        sent = await update.message.reply_text(
             text=message,
             reply_markup=reply_markup,
             parse_mode="Markdown"
         )
+        context.user_data["active_create_message"] = {
+            "chat_id": sent.chat_id,
+            "message_id": sent.message_id,
+        }
 
     return CREATE_USER_FIELD
 
@@ -2806,6 +2891,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
 
 async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Finish creating a user"""
+    await _delete_active_prompt_message(context)
     user_data = context.user_data.get("create_user")
     if not isinstance(user_data, dict):
         logger.warning("create_user context was missing or invalid during finish_create_user; reinitializing")
@@ -3858,7 +3944,7 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
             value = _parse_expire_input(value, base_date=base_date)
         except ValueError:
             text = "❌ Неверный формат. Введите дату как `YYYY-MM-DD`, либо относительное значение вроде `30d` или `2m`."
-            if not _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
+            if not await _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
                 await update.message.reply_text(text, reply_markup=keyboard_error, parse_mode="Markdown")
             return EDIT_USER
     
@@ -3870,14 +3956,14 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
             user_is_super_admin = bool(update.effective_user and is_super_admin_user(update.effective_user.id))
             if gb == 0 and not user_is_super_admin:
                 text = "❌ Безлимитный лимит доступен только суперадмину. Введите другое значение."
-                if not _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
+                if not await _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
                     await update.message.reply_text(text, reply_markup=keyboard_error, parse_mode="Markdown")
-                return EDIT_USER
+            return EDIT_USER
             # Convert GB to bytes (0 stays unlimited)
             value = 0 if gb == 0 else gb * 1024 * 1024 * 1024
         except ValueError:
             text = "❌ Неверный формат. Введите целое число ГБ (0 — безлимит, доступен только суперадмину)."
-            if not _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
+            if not await _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
                 await update.message.reply_text(text, reply_markup=keyboard_error, parse_mode="Markdown")
             return EDIT_USER
     
@@ -3886,7 +3972,7 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
             value = int(value)
         except ValueError:
             text = "❌ Неверный формат Telegram ID. Введите целое число."
-            if not _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
+            if not await _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
                 await update.message.reply_text(text, reply_markup=keyboard_error, parse_mode="Markdown")
             return EDIT_USER
             
@@ -3897,7 +3983,7 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
                 raise ValueError("Device limit cannot be negative")
         except ValueError:
             text = "❌ Неверный формат числа. Введите целое число >= 0."
-            if not _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
+            if not await _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
                 await update.message.reply_text(text, reply_markup=keyboard_error, parse_mode="Markdown")
             return EDIT_USER
     
@@ -3914,7 +4000,7 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
         user_cache.invalidate_user(user["uuid"])
         user_cache.invalidate_all_users()
         context.user_data.pop("active_edit_message", None)
-        if not _edit_cached_message(
+        if not await _edit_cached_message(
             context,
             f"✅ Поле {field} успешно обновлено.",
             reply_markup=keyboard_success,
@@ -3926,7 +4012,7 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode="Markdown"
             )
     else:
-        if not _edit_cached_message(
+        if not await _edit_cached_message(
             context,
             f"❌ Не удалось обновить поле {field}.",
             reply_markup=keyboard_error,
