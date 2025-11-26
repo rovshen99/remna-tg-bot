@@ -165,6 +165,16 @@ async def _delete_active_prompt_message(context: ContextTypes.DEFAULT_TYPE):
     except Exception as exc:
         logger.debug("Failed to delete previous prompt message: %s", exc)
 
+async def _delete_active_edit_message(context: ContextTypes.DEFAULT_TYPE):
+    """Delete the last edit prompt message (for editing fields) if present."""
+    active = context.user_data.pop("active_edit_message", None)
+    if not active:
+        return
+    try:
+        await context.bot.delete_message(chat_id=active["chat_id"], message_id=active["message_id"])
+    except Exception as exc:
+        logger.debug("Failed to delete previous edit message: %s", exc)
+
 
 async def _edit_cached_message(context: ContextTypes.DEFAULT_TYPE, text: str, reply_markup=None, parse_mode: str | None = None) -> bool:
     """Try to edit the last cached prompt message; return True on success."""
@@ -3641,6 +3651,8 @@ async def handle_edit_field_selection(update: Update, context: ContextTypes.DEFA
     data = query.data
 
     if data.startswith("edit_field_"):
+        # Clean up any previous edit prompt
+        await _delete_active_edit_message(context)
         field = data[11:]  # убираем "edit_field_"
         user = context.user_data["edit_user"]
         user_is_super_admin = bool(update.effective_user and is_super_admin_user(update.effective_user.id))
@@ -4012,6 +4024,7 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
         user_cache.invalidate_user(user["uuid"])
         user_cache.invalidate_all_users()
         context.user_data.pop("active_edit_message", None)
+        await _delete_active_edit_message(context)
         if not await _edit_cached_message(
             context,
             f"✅ Поле {field} успешно обновлено.",
@@ -4024,6 +4037,7 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode="Markdown"
             )
     else:
+        await _delete_active_edit_message(context)
         if not await _edit_cached_message(
             context,
             f"❌ Не удалось обновить поле {field}.",
