@@ -170,7 +170,9 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
         back_row = [InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")]
         if keyboard:
-            keyboard = InlineKeyboardMarkup(keyboard.inline_keyboard + [back_row])
+            rows = list(keyboard.inline_keyboard)
+            rows.append(back_row)
+            keyboard = InlineKeyboardMarkup(rows)
         else:
             keyboard = InlineKeyboardMarkup([back_row])
 
