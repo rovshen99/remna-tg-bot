@@ -1,5 +1,6 @@
 import logging
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, time as dtime
 from typing import Dict, List, Optional, Tuple
 
@@ -35,6 +36,19 @@ SUPER_ADMINS = set(int(admin_id) for admin_id in SUPER_ADMIN_USER_IDS)
 ExpiringUser = Tuple[Dict, datetime]
 
 
+@dataclass
+class NotificationResult:
+    total_users: int = 0
+    notified_admins: int = 0
+    notified_superadmins: int = 0
+    grouped_users: Dict[Optional[int], List[ExpiringUser]] = field(default_factory=dict)
+    had_error: bool = False
+
+    @property
+    def has_items(self) -> bool:
+        return self.total_users > 0
+
+
 def schedule_expiration_notifications(application: Application) -> None:
     """Register the daily expiration notification job."""
     if not EXPIRATION_NOTIFICATION_ENABLED:
@@ -59,17 +73,17 @@ def schedule_expiration_notifications(application: Application) -> None:
     )
 
 
-async def notify_expiring_subscriptions(context: ContextTypes.DEFAULT_TYPE) -> None:
+async def notify_expiring_subscriptions(context: ContextTypes.DEFAULT_TYPE) -> NotificationResult:
     """Job callback: notify admins about soon-to-expire subscriptions."""
     try:
         expiring_users = await _collect_expiring_users(EXPIRATION_NOTIFICATION_DAYS)
     except Exception as exc:
         logger.error("Failed to collect expiring users: %s", exc, exc_info=True)
-        return
+        return NotificationResult(had_error=True)
 
     if not expiring_users:
         logger.info("No expiring users found for notification window.")
-        return
+        return NotificationResult()
 
     admin_records = {
         admin["user_id"]: admin
@@ -78,15 +92,63 @@ async def notify_expiring_subscriptions(context: ContextTypes.DEFAULT_TYPE) -> N
     }
     grouped_users = _group_by_owner(expiring_users)
 
-    await _notify_admins(context, grouped_users, admin_records)
-    await _notify_superadmins(context, grouped_users, admin_records)
+    admin_count = await _notify_admins(context, grouped_users, admin_records)
+    superadmin_count = await _notify_superadmins(context, grouped_users, admin_records)
+    total_users = sum(len(items) for items in grouped_users.values())
+
+    return NotificationResult(
+        total_users=total_users,
+        notified_admins=admin_count,
+        notified_superadmins=superadmin_count,
+        grouped_users=grouped_users,
+    )
+
+
+async def build_admin_notification(admin_id: int) -> Optional[str]:
+    """Return a markdown message about expiring users belonging to the given admin."""
+    try:
+        expiring_users = await _collect_expiring_users(EXPIRATION_NOTIFICATION_DAYS)
+    except Exception as exc:
+        logger.error("Failed to collect expiring users for admin %s: %s", admin_id, exc, exc_info=True)
+        return None
+
+    if not expiring_users:
+        return None
+
+    grouped = _group_by_owner(expiring_users)
+    items = grouped.get(int(admin_id)) or []
+    if not items:
+        return None
+
+    return _build_admin_message(items)
+
+
+async def build_superadmin_notification() -> Optional[str]:
+    """Return a markdown summary for superadmins with grouping by диллер."""
+    try:
+        expiring_users = await _collect_expiring_users(EXPIRATION_NOTIFICATION_DAYS)
+    except Exception as exc:
+        logger.error("Failed to collect expiring users for superadmin view: %s", exc, exc_info=True)
+        return None
+
+    if not expiring_users:
+        return None
+
+    grouped_users = _group_by_owner(expiring_users)
+    admin_records = {
+        admin["user_id"]: admin
+        for admin in admin_store.list_admins()
+        if admin.get("is_active", 1)
+    }
+    return _build_superadmin_message(grouped_users, admin_records)
 
 
 async def _notify_admins(
     context: ContextTypes.DEFAULT_TYPE,
     grouped_users: Dict[Optional[int], List[ExpiringUser]],
     admin_records: Dict[int, Dict],
-) -> None:
+) -> int:
+    sent = 0
     for admin_id, items in grouped_users.items():
         if admin_id is None or admin_id in SUPER_ADMINS:
             continue
@@ -101,22 +163,26 @@ async def _notify_admins(
                 disable_web_page_preview=True,
             )
             logger.debug("Sent expiration reminder to admin %s (%d users).", admin_id, len(items))
+            sent += 1
         except Exception as exc:
             logger.error("Failed to send expiration reminder to admin %s: %s", admin_id, exc)
+
+    return sent
 
 
 async def _notify_superadmins(
     context: ContextTypes.DEFAULT_TYPE,
     grouped_users: Dict[Optional[int], List[ExpiringUser]],
     admin_records: Dict[int, Dict],
-) -> None:
+) -> int:
     if not SUPER_ADMINS:
-        return
+        return 0
 
     message = _build_superadmin_message(grouped_users, admin_records)
     if not message:
-        return
+        return 0
 
+    sent = 0
     for chat_id in SUPER_ADMINS:
         try:
             await context.bot.send_message(
@@ -126,8 +192,11 @@ async def _notify_superadmins(
                 disable_web_page_preview=True,
             )
             logger.debug("Sent expiration summary to superadmin %s.", chat_id)
+            sent += 1
         except Exception as exc:
             logger.error("Failed to send expiration summary to superadmin %s: %s", chat_id, exc)
+
+    return sent
 
 
 async def _collect_expiring_users(days: int) -> List[ExpiringUser]:

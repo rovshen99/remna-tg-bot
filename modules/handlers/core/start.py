@@ -10,6 +10,7 @@ from modules.config import (
     DASHBOARD_SHOW_UPTIME,
     MAIN_MENU_TITLE,
     INBOUNDS_MENU_ENABLED,
+    EXPIRATION_NOTIFICATION_ENABLED,
 )
 from modules.utils.auth import (
     check_operator_or_admin,
@@ -128,6 +129,15 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             ]
         )
+        if EXPIRATION_NOTIFICATION_ENABLED:
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        "⏰ Истекающие подписки",
+                        callback_data="notify_expiring_self",
+                    )
+                ]
+            )
 
     keyboard.append(
         [

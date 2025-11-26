@@ -14,6 +14,8 @@ from modules.config import (
     CREATE_USER_FIELD,
     SELECTING_USER,
     INBOUNDS_MENU_ENABLED,
+    EXPIRATION_NOTIFICATION_ENABLED,
+    EXPIRATION_NOTIFICATION_DAYS,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,10 @@ from modules.handlers.core.language import (
     LANGUAGE_SELECT_PREFIX,
     handle_language_selection,
     show_language_menu,
+)
+from modules.services.expiration_notifier import (
+    build_admin_notification,
+    build_superadmin_notification,
 )
 
 async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -68,7 +74,7 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
     }
     if INBOUNDS_MENU_ENABLED:
         superadmin_sections.update({"inbounds", "menu_inbounds"})
-    admin_sections = {"create_user", "menu_create_user"}
+    admin_sections = {"create_user", "menu_create_user", "notify_expiring_self"}
 
     if data in superadmin_sections and not is_superadmin:
         await query.answer("Этот раздел доступен только суперадминам.", show_alert=True)
@@ -125,6 +131,34 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
     elif data == "inbounds" or data == "menu_inbounds":
         await show_inbounds_menu(update, context)
         return INBOUND_MENU
+
+    elif data == "notify_expiring_self":
+        if not EXPIRATION_NOTIFICATION_ENABLED:
+            await query.answer("Уведомления об истечении отключены.", show_alert=True)
+            return MAIN_MENU
+
+        if is_superadmin:
+            message = await build_superadmin_notification()
+        else:
+            message = await build_admin_notification(update.effective_user.id)
+        chat_id = update.effective_chat.id if update.effective_chat else update.effective_user.id
+
+        if message:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=message,
+                parse_mode="Markdown",
+                disable_web_page_preview=True,
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"На ближайшие {EXPIRATION_NOTIFICATION_DAYS} дн. "
+                    f"{'нет пользователей с истекающей подпиской.' if is_superadmin else 'нет ваших пользователей с истекающей подпиской.'}"
+                ),
+            )
+        return MAIN_MENU
 
     elif data == LANGUAGE_MENU_CALLBACK:
         await show_language_menu(update, context)

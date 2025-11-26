@@ -2,12 +2,20 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import logging
 
-from modules.config import MAIN_MENU, BULK_MENU, BULK_ACTION, BULK_CONFIRM
+from modules.config import (
+    MAIN_MENU,
+    BULK_MENU,
+    BULK_ACTION,
+    BULK_CONFIRM,
+    EXPIRATION_NOTIFICATION_ENABLED,
+    EXPIRATION_NOTIFICATION_DAYS,
+)
 from modules.api.bulk import BulkAPI
 from modules.api.users import UserAPI
 from modules.utils.selection_helpers import SelectionHelper
 from modules.handlers.core.start import show_main_menu
 from modules.utils.auth import check_superadmin
+from modules.services.expiration_notifier import notify_expiring_subscriptions
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +48,18 @@ async def show_bulk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 callback_data="bulk_update_all",
             )
         ],
+        *(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🔔 Напомнить об истечениях",
+                        callback_data="bulk_notify_expiring",
+                    )
+                ]
+            ]
+            if EXPIRATION_NOTIFICATION_ENABLED
+            else []
+        ),
         [
             InlineKeyboardButton(
                 "🔙 Назад в главное меню",
@@ -143,6 +163,45 @@ async def handle_bulk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             "🚧 Функция массового обновления находится в разработке.",
             parse_mode="Markdown"
+        )
+        return BULK_MENU
+
+    elif data == "bulk_notify_expiring":
+        await query.edit_message_text(
+            "⏳ Собираю пользователей с истекающей подпиской...",
+            parse_mode="Markdown",
+        )
+        result = await notify_expiring_subscriptions(context)
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "🔙 Назад",
+                    callback_data="back_to_bulk",
+                )
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        if not result or result.had_error:
+            message = "⚠️ Не удалось отправить уведомления. Проверьте логи."
+        elif not result.has_items:
+            message = (
+                f"ℹ️ В ближайшие {EXPIRATION_NOTIFICATION_DAYS} дн. нет пользователей "
+                "с истекающей подпиской."
+            )
+        else:
+            message = (
+                "✅ Уведомления отправлены.\n\n"
+                f"Пользователей в окне {EXPIRATION_NOTIFICATION_DAYS} дн.: {result.total_users}\n"
+                f"Администраторы уведомлены: {result.notified_admins}\n"
+                f"Суперадминистраторы уведомлены: {result.notified_superadmins}"
+            )
+
+        await query.edit_message_text(
+            message,
+            reply_markup=reply_markup,
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
         )
         return BULK_MENU
 
