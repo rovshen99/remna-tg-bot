@@ -6,7 +6,7 @@ import string
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse, parse_qs
 from io import BytesIO
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ContextTypes, ConversationHandler
 import re
 import asyncio
@@ -2983,7 +2983,22 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"`{escape_markdown(crypto_link)}`"
             )
             target_chat = update.effective_chat
-            if target_chat:
+            if update.callback_query and update.callback_query.message:
+                try:
+                    await update.callback_query.edit_message_media(
+                        media=InputMediaPhoto(media=qr_stream, caption=caption, parse_mode="Markdown"),
+                        reply_markup=reply_markup
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to edit message to QR photo: %s; sending new photo", exc)
+                    if target_chat:
+                        await target_chat.send_photo(
+                            photo=qr_stream,
+                            caption=caption,
+                            reply_markup=reply_markup,
+                            parse_mode="Markdown"
+                        )
+            elif target_chat:
                 await target_chat.send_photo(
                     photo=qr_stream,
                     caption=caption,
