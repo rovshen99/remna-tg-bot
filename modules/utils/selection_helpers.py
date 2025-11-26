@@ -243,15 +243,20 @@ class SelectionHelper:
         else:
             rows.append([InlineKeyboardButton("🔄 Обновить данные", callback_data=f"{action_prefix}_refresh_{user_uuid}")])
 
+        # Quick actions
         rows.append([
-            InlineKeyboardButton("🔄 +30д и сброс", callback_data=f"{action_prefix}_extend_{user_uuid}")
-        ])
-
-        rows.append([
+            InlineKeyboardButton("🔄 +30д и сброс", callback_data=f"{action_prefix}_extend_{user_uuid}"),
             InlineKeyboardButton("🔳 QR code", callback_data=f"{action_prefix}_qrcode_{user_uuid}")
         ])
 
-        rows.append([InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_users")])
+        # Destructive/back row
+        if allow_delete and is_admin:
+            rows.append([
+                InlineKeyboardButton("🗑️ Удалить", callback_data=f"{action_prefix}_delete_{user_uuid}"),
+                InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_users")
+            ])
+        else:
+            rows.append([InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_users")])
         return InlineKeyboardMarkup(rows)
 
     @staticmethod
