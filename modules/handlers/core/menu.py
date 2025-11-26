@@ -138,29 +138,39 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
             await query.answer("Уведомления об истечении отключены.", show_alert=True)
             return MAIN_MENU
 
+        reply_markup = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")]]
+        )
+
         if is_superadmin:
             message = await build_superadmin_notification()
         else:
             message = await build_admin_notification(update.effective_user.id)
-        chat_id = update.effective_chat.id if update.effective_chat else update.effective_user.id
 
-        if message:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=message,
+        text = (
+            message
+            if message
+            else f"На ближайшие {EXPIRATION_NOTIFICATION_DAYS} дн. "
+                 f"{'нет пользователей с истекающей подпиской.' if is_superadmin else 'нет ваших пользователей с истекающей подпиской.'}"
+        )
+
+        # Стараемся заменить исходное сообщение; если не получается, шлём новое
+        try:
+            await query.edit_message_text(
+                text=text,
+                reply_markup=reply_markup,
                 parse_mode="Markdown",
                 disable_web_page_preview=True,
             )
-        else:
+        except Exception as exc:
+            logger.debug("Falling back to send_message for expiring notification: %s", exc)
+            chat_id = update.effective_chat.id if update.effective_chat else update.effective_user.id
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=(
-                    f"На ближайшие {EXPIRATION_NOTIFICATION_DAYS} дн. "
-                    f"{'нет пользователей с истекающей подпиской.' if is_superadmin else 'нет ваших пользователей с истекающей подпиской.'}"
-                ),
-                reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")]]
-                ),
+                text=text,
+                parse_mode="Markdown",
+                disable_web_page_preview=True,
+                reply_markup=reply_markup,
             )
         return MAIN_MENU
 
