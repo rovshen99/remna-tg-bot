@@ -235,11 +235,6 @@ class SelectionHelper:
                     InlineKeyboardButton("🔐 Отозвать подписку", callback_data=f"{action_prefix}_revoke_{user_uuid}")
                 ]
             ])
-
-            if allow_delete:
-                rows.append([
-                    InlineKeyboardButton("🗑️ Удалить", callback_data=f"{action_prefix}_delete_{user_uuid}")
-                ])
         else:
             rows.append([InlineKeyboardButton("🔄 Обновить данные", callback_data=f"{action_prefix}_refresh_{user_uuid}")])
 
