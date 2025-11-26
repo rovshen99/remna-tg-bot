@@ -246,8 +246,8 @@ def _parse_expire_input(value: str, base_date: Optional[datetime] = None) -> str
             raise ValueError("Relative expireAt value should be positive")
 
         unit = relative_match.group(2)
-        base = base_date or datetime.now()
-        base = base.replace(hour=0, minute=0, second=0, microsecond=0)
+        # For relative offsets, use an exact duration from the base moment (no midnight snapping)
+        base = base_date or datetime.now().astimezone()
 
         if unit == "d":
             target = base + timedelta(days=amount)
