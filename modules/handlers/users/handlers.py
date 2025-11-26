@@ -147,6 +147,14 @@ GB = 1024 * 1024 * 1024
 DEFAULT_NON_SUPERADMIN_LIMIT_GB = 200
 
 
+async def _delete_message_safe(bot, chat_id, message_id):
+    """Silently delete a message; ignore failures."""
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception as exc:
+        logger.debug("Failed to delete message %s in chat %s: %s", message_id, chat_id, exc)
+
+
 async def _delete_active_prompt_message(context: ContextTypes.DEFAULT_TYPE):
     """Delete the last prompt message sent during user creation, if any."""
     active = context.user_data.pop("active_create_message", None)
@@ -2754,6 +2762,8 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
             index = _get_current_field_index(context)
             field = fields[index]
             value = update.message.text.strip()
+            if update.message and update.effective_chat:
+                await _delete_message_safe(context.bot, update.effective_chat.id, update.message.message_id)
             
             # Process the value based on the field
             if field == "username":
@@ -3929,6 +3939,8 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
         return USER_MENU
     
     value = update.message.text.strip()
+    if update.message and update.effective_chat:
+        await _delete_message_safe(context.bot, update.effective_chat.id, update.message.message_id)
     keyboard_success = InlineKeyboardMarkup([
         [InlineKeyboardButton("👁️ Просмотр пользователя", callback_data=f"view_{user['uuid']}")],
         [InlineKeyboardButton("📝 Продолжить редактирование", callback_data=f"edit_{user['uuid']}")],
