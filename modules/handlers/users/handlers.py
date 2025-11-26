@@ -2159,7 +2159,7 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         if update.callback_query:
-            await update.callback_query.edit_message_text(
+            await update.effective_chat.send_message(
                 text=message,
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
