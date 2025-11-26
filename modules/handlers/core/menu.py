@@ -103,14 +103,19 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
         if success and query.message:
             user_cache.invalidate_user(uuid)
             user_cache.invalidate_all_users()
+            back_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")]])
             try:
-                await context.bot.send_message(
-                    chat_id=query.message.chat_id,
-                    text=msg,
-                    parse_mode="Markdown",
-                )
+                await query.edit_message_text(text=msg, reply_markup=back_markup, parse_mode="Markdown")
             except Exception:
-                pass
+                try:
+                    await context.bot.send_message(
+                        chat_id=query.message.chat_id,
+                        text=msg,
+                        parse_mode="Markdown",
+                        reply_markup=back_markup,
+                    )
+                except Exception:
+                    pass
         return MAIN_MENU
 
     if data == "users" or data == "menu_users":
