@@ -1418,6 +1418,23 @@ async def show_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         allow_delete=can_delete_user
     )
 
+    # Если пришли из фото (QR), лучше отправить новое текстовое сообщение,
+    # иначе длинное описание не влезет в caption и кнопка "Назад" будет казаться сломанной.
+    if update.callback_query and update.callback_query.message and update.callback_query.message.photo:
+        target_chat = update.effective_chat
+        try:
+            await update.callback_query.message.delete()
+        except Exception as exc:
+            logger.debug("Failed to delete QR photo message: %s", exc)
+        if target_chat:
+            await target_chat.send_message(
+                text=message,
+                reply_markup=keyboard,
+                parse_mode="Markdown"
+            )
+            context.user_data["current_user"] = user
+            return SELECTING_USER
+
     try:
         await update.callback_query.edit_message_text(
             text=message,
