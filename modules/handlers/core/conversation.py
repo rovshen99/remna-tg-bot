@@ -71,6 +71,10 @@ def create_conversation_handler():
             MAIN_MENU: [
                 CallbackQueryHandler(handle_menu_selection)
             ],
+            MAIN_MENU: [
+                CallbackQueryHandler(handle_menu_selection, pattern="^expire_extend_"),
+                CallbackQueryHandler(handle_menu_selection)
+            ],
             USER_MENU: [
                 CallbackQueryHandler(handle_users_menu)
             ],

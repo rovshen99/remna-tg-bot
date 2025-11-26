@@ -36,6 +36,7 @@ from modules.handlers.core.language import (
 from modules.services.expiration_notifier import (
     build_admin_notification,
     build_superadmin_notification,
+    build_notification_payload,
     extend_user_subscription_and_reset,
 )
 
@@ -157,27 +158,27 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
             await query.answer("Уведомления об истечении отключены.", show_alert=True)
             return MAIN_MENU
 
-        reply_markup = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")]]
+        text, keyboard = await build_notification_payload(
+            update.effective_user.id, is_superadmin=is_superadmin
         )
 
-        if is_superadmin:
-            message = await build_superadmin_notification()
+        if not text:
+            text = (
+                f"На ближайшие {EXPIRATION_NOTIFICATION_DAYS} дн. "
+                f"{'нет пользователей с истекающей подпиской.' if is_superadmin else 'нет ваших пользователей с истекающей подпиской.'}"
+            )
+
+        back_row = [InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")]
+        if keyboard:
+            keyboard = InlineKeyboardMarkup(keyboard.inline_keyboard + [back_row])
         else:
-            message = await build_admin_notification(update.effective_user.id)
-
-        text = (
-            message
-            if message
-            else f"На ближайшие {EXPIRATION_NOTIFICATION_DAYS} дн. "
-                 f"{'нет пользователей с истекающей подпиской.' if is_superadmin else 'нет ваших пользователей с истекающей подпиской.'}"
-        )
+            keyboard = InlineKeyboardMarkup([back_row])
 
         # Стараемся заменить исходное сообщение; если не получается, шлём новое
         try:
             await query.edit_message_text(
                 text=text,
-                reply_markup=reply_markup,
+                reply_markup=keyboard,
                 parse_mode="Markdown",
                 disable_web_page_preview=True,
             )
@@ -189,7 +190,7 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 text=text,
                 parse_mode="Markdown",
                 disable_web_page_preview=True,
-                reply_markup=reply_markup,
+                reply_markup=keyboard,
             )
         return MAIN_MENU
 

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone, time as dtime
 from typing import Dict, Iterable, List, Optional, Tuple, Sequence
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, ContextTypes
 
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -131,6 +132,54 @@ async def build_admin_notification(admin_id: int) -> Optional[str]:
         return None
 
     return _build_admin_message(items)
+
+
+async def build_notification_payload(
+    admin_id: int,
+    *,
+    is_superadmin: bool = False,
+) -> Tuple[Optional[str], Optional[InlineKeyboardMarkup]]:
+    """Return text and inline keyboard for expiring users (admin or superadmin view)."""
+    try:
+        expiring_users = await _collect_expiring_users(EXPIRATION_NOTIFICATION_DAYS)
+    except Exception as exc:
+        logger.error("Failed to collect expiring users for payload: %s", exc, exc_info=True)
+        return None, None
+
+    if not expiring_users:
+        return None, None
+
+    grouped = _group_by_owner(expiring_users)
+    admin_records = {
+        admin["user_id"]: admin for admin in admin_store.list_admins() if admin.get("is_active", 1)
+    }
+
+    if is_superadmin:
+        text = _build_superadmin_message(grouped, admin_records)
+        items: List[ExpiringUser] = [item for lst in grouped.values() for item in lst]
+    else:
+        items = grouped.get(int(admin_id)) or []
+        if not items:
+            return None, None
+        text = _build_admin_message(items)
+
+    keyboard_rows = []
+    for user, _ in items:
+        username = user.get("username") or user.get("email") or user.get("uuid") or "Без имени"
+        uuid = user.get("uuid")
+        if not uuid:
+            continue
+        keyboard_rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"🔄 +30д и сброс — {username}",
+                    callback_data=f"expire_extend_{uuid}",
+                )
+            ]
+        )
+
+    markup = InlineKeyboardMarkup(keyboard_rows) if keyboard_rows else None
+    return text, markup
 
 
 async def build_superadmin_notification() -> Optional[str]:
