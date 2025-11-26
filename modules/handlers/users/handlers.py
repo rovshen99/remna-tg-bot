@@ -2532,11 +2532,11 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     if value == 0:
                         readable_value = "Безлимитный"
                     
-                    # Показываем сообщение о выбранном лимите
-                    await query.edit_message_text(
-                        f"✅ Выбран лимит трафика: {readable_value}",
-                        parse_mode="Markdown"
-                    )
+                    # Показываем всплывающее подтверждение и сразу переходим к следующему полю
+                    try:
+                        await query.answer(f"✅ Лимит трафика: {readable_value}", show_alert=False)
+                    except Exception:
+                        pass
                     
                     # Переходим к следующему полю
                     _advance_field_index(context)
