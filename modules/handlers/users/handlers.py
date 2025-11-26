@@ -3668,6 +3668,9 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
                 result = await UserAPI.update_user(user["uuid"], update_data)
                 if result:
                     context.user_data["edit_user"]["expireAt"] = new_date
+                    # Drop stale cache so the updated expiration is visible immediately
+                    user_cache.invalidate_user(user["uuid"])
+                    user_cache.invalidate_all_users()
                     keyboard = [
                         [InlineKeyboardButton("👤 К пользователю", callback_data=f"view_{user['uuid']}")],
                         [InlineKeyboardButton("✏️ Продолжить редактирование", callback_data=f"edit_{user['uuid']}")],
@@ -3699,6 +3702,8 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
                 result = await UserAPI.update_user(user["uuid"], update_data)
                 if result:
                     context.user_data["edit_user"]["trafficLimitBytes"] = bytes_value
+                    user_cache.invalidate_user(user["uuid"])
+                    user_cache.invalidate_all_users()
                     shown = "Безлимитный" if bytes_value == 0 else f"{gb} ГБ"
                     keyboard = [
                         [InlineKeyboardButton("👤 К пользователю", callback_data=f"view_{user['uuid']}")],
@@ -3725,6 +3730,8 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
                 result = await UserAPI.update_user(user["uuid"], update_data)
                 if result:
                     context.user_data["edit_user"]["trafficLimitStrategy"] = strategy
+                    user_cache.invalidate_user(user["uuid"])
+                    user_cache.invalidate_all_users()
                     keyboard = [
                         [InlineKeyboardButton("👤 К пользователю", callback_data=f"view_{user['uuid']}")],
                         [InlineKeyboardButton("✏️ Продолжить редактирование", callback_data=f"edit_{user['uuid']}")],
@@ -3755,6 +3762,8 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
                 result = await UserAPI.update_user(user["uuid"], update_data)
                 if result:
                     context.user_data["edit_user"].update(update_data)
+                    user_cache.invalidate_user(user["uuid"])
+                    user_cache.invalidate_all_users()
                     shown = "Без ограничений" if devices == 0 else str(devices)
                     keyboard = [
                         [InlineKeyboardButton("👤 К пользователю", callback_data=f"view_{user['uuid']}")],
@@ -3897,6 +3906,8 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
     result = await UserAPI.update_user(user["uuid"], update_data)
     
     if result:
+        user_cache.invalidate_user(user["uuid"])
+        user_cache.invalidate_all_users()
         keyboard = [
             [InlineKeyboardButton("👁️ Просмотр пользователя", callback_data=f"view_{user['uuid']}")],
             [InlineKeyboardButton("📝 Продолжить редактирование", callback_data=f"edit_{user['uuid']}")],
