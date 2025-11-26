@@ -2974,31 +2974,37 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
         for key in ("create_user", "create_user_fields", "current_field_index", "using_template", "search_type", "waiting_for"):
             context.user_data.pop(key, None)
 
-        # Send QR/crypto link first, before the success message
         if crypto_link:
             qr_stream = _build_qr_code_payload(crypto_link)
             username_md = escape_markdown(result.get('username', ''))
-            caption = f"🔳 QR-код для `{username_md}`\n`{escape_markdown(crypto_link)}`"
-            target_message = update.callback_query.message if update.callback_query else update.message
-            if target_message:
-                await target_message.reply_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
-            elif update.effective_chat:
-                await update.effective_chat.send_photo(photo=qr_stream, caption=caption, parse_mode="Markdown")
+            caption = (
+                f"{message}\n\n"
+                f"🔳 QR-код для `{username_md}`\n"
+                f"`{escape_markdown(crypto_link)}`"
+            )
+            target_chat = update.effective_chat
+            if target_chat:
+                await target_chat.send_photo(
+                    photo=qr_stream,
+                    caption=caption,
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
+                )
             else:
-                logger.warning("Unable to send QR code photo after user creation")
-
-        if update.callback_query:
-            await update.callback_query.edit_message_text(
-                text=message,
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+                logger.warning("Unable to send QR code photo after user creation: no chat")
         else:
-            await update.message.reply_text(
-                text=message,
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    text=message,
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
+                )
+            else:
+                await update.message.reply_text(
+                    text=message,
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
+                )
 
         if created_uuid:
             try:
