@@ -2045,6 +2045,8 @@ async def start_template_creation(update: Update, context: ContextTypes.DEFAULT_
 
 async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ask for a field value when creating a user"""
+    # Prefer editing the last callback message if provided
+    query_for_edit = context.user_data.pop("force_edit_query", None) or getattr(update, "callback_query", None)
     fields = _get_create_user_fields(context)
     index = _get_current_field_index(context)
     creation_data = context.user_data.setdefault("create_user", {})
@@ -2194,8 +2196,8 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        if update.callback_query:
-            await update.callback_query.edit_message_text(
+        if query_for_edit:
+            await query_for_edit.edit_message_text(
                 text=message,
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
@@ -2225,8 +2227,8 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        if update.callback_query:
-            await update.callback_query.edit_message_text(
+        if query_for_edit:
+            await query_for_edit.edit_message_text(
                 text=message,
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
@@ -2263,8 +2265,8 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        if update.callback_query:
-            await update.callback_query.edit_message_text(
+        if query_for_edit:
+            await query_for_edit.edit_message_text(
                 text=message,
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
@@ -2436,6 +2438,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     current_fields.append(field)
             context.user_data["create_user_fields"] = current_fields
             _advance_field_index(context)  # переходим к следующему полю
+            context.user_data["force_edit_query"] = query
             await ask_for_field(update, context)
             return CREATE_USER_FIELD
         
@@ -2444,6 +2447,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
             field_name = data[19:]  # убираем "use_template_value_"
             # Значение уже есть в данных пользователя из шаблона
             _advance_field_index(context)
+            context.user_data["force_edit_query"] = query
             await ask_for_field(update, context)
             return CREATE_USER_FIELD
         
@@ -2459,6 +2463,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
             
             context.user_data["create_user"][field] = value
             _advance_field_index(context)
+            context.user_data["force_edit_query"] = query
             await ask_for_field(update, context)
             return CREATE_USER_FIELD
             
@@ -2485,6 +2490,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     
                     # Переходим к следующему полю
                     _advance_field_index(context)
+                    context.user_data["force_edit_query"] = query
                     await ask_for_field(update, context)
                 except ValueError as e:
                     logger.error(f"Error parsing date: {e}")
@@ -2520,6 +2526,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     )
                     if value == 0 and not user_is_super_admin:
                         await query.answer("Безлимит доступен только суперадмину.", show_alert=True)
+                        context.user_data["force_edit_query"] = query
                         await ask_for_field(update, context)
                         return CREATE_USER_FIELD
                     context.user_data["create_user"][field] = value
@@ -2540,6 +2547,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     
                     # Переходим к следующему полю
                     _advance_field_index(context)
+                    context.user_data["force_edit_query"] = query
                     await ask_for_field(update, context)
             except ValueError as e:
                 logger.error(f"Error parsing traffic limit: {e}")
@@ -2580,6 +2588,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     
                     # Переходим к следующему полю
                     _advance_field_index(context)
+                    context.user_data["force_edit_query"] = query
                     await ask_for_field(update, context)
             except Exception as e:
                 logger.error(f"Unexpected error processing description template: {e}", exc_info=True)
@@ -2635,6 +2644,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     
                     # Переходим к следующему полю
                     _advance_field_index(context)
+                    context.user_data["force_edit_query"] = query
                     await ask_for_field(update, context)
             except ValueError as e:
                 logger.error(f"Error parsing device limit: {e}")
