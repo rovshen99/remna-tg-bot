@@ -38,6 +38,7 @@ from modules.services.expiration_notifier import (
     build_admin_notification,
     build_superadmin_notification,
     build_notification_payload,
+    preview_extension_date,
     extend_user_subscription_and_reset,
 )
 
@@ -93,8 +94,8 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
     logger.info(f"Current state: {context.user_data.get('conversation_state', 'unknown')}")
     logger.info(f"==============================")
 
-    if data.startswith("expire_extend_"):
-        uuid = data.replace("expire_extend_", "", 1)
+    if data.startswith("expire_extend_confirm_"):
+        uuid = data.replace("expire_extend_confirm_", "", 1)
         allow_any_owner = bool(is_superadmin)
         success, msg = await extend_user_subscription_and_reset(
             uuid, update.effective_user.id, allow_any_owner=allow_any_owner
@@ -116,6 +117,30 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
                     )
                 except Exception:
                     pass
+        return MAIN_MENU
+    elif data.startswith("expire_extend_"):
+        uuid = data.replace("expire_extend_", "", 1)
+        allow_any_owner = bool(is_superadmin)
+        ok, new_expire, username = await preview_extension_date(uuid, update.effective_user.id, allow_any_owner=allow_any_owner)
+        if not ok or not new_expire:
+            await query.answer(new_expire or "❌ Ошибка", show_alert=True)
+            return MAIN_MENU
+        target_date = new_expire[:10]
+        name_md = escape_markdown(username or "")
+        text = f"⚡ Продлить подписку `{name_md}` до {target_date} и сбросить трафик?"
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"✅ Продлить до {target_date}", callback_data=f"expire_extend_confirm_{uuid}")],
+            [InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")],
+        ])
+        try:
+            await query.edit_message_text(text=text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception:
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=text,
+                parse_mode="Markdown",
+                reply_markup=keyboard,
+            )
         return MAIN_MENU
 
     if data == "users" or data == "menu_users":

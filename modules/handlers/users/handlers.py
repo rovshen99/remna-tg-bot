@@ -140,6 +140,10 @@ from modules.utils.auth import (
     INSUFFICIENT_PERMISSIONS_MESSAGE
 )
 from modules.handlers.core.start import show_main_menu
+from modules.services.expiration_notifier import (
+    preview_extension_date,
+    extend_user_subscription_and_reset,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1551,26 +1555,50 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 return SELECTING_USER
             elif action == "extend":
                 allow_any_owner = bool(context.user_data.get('is_superadmin'))
-                success, msg = await extend_user_subscription_and_reset(
-                    uuid, update.effective_user.id, allow_any_owner=allow_any_owner
-                )
-                await query.answer(msg, show_alert=not success)
-                if success:
-                    user_cache.invalidate_user(uuid)
-                    user_cache.invalidate_all_users()
-                    back_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад к пользователю", callback_data=f"view_{uuid}")]])
-                    try:
-                        await query.edit_message_text(text=msg, reply_markup=back_markup, parse_mode="Markdown")
-                    except Exception:
+                if len(action_parts) >= 5 and action_parts[3] == "confirm":
+                    uuid = "_".join(action_parts[4:])
+                    success, msg = await extend_user_subscription_and_reset(
+                        uuid, update.effective_user.id, allow_any_owner=allow_any_owner
+                    )
+                    await query.answer(msg, show_alert=not success)
+                    if success:
+                        user_cache.invalidate_user(uuid)
+                        user_cache.invalidate_all_users()
+                        back_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад к пользователю", callback_data=f"view_{uuid}")]])
                         try:
-                            await context.bot.send_message(
-                                chat_id=query.message.chat_id,
-                                text=msg,
-                                parse_mode="Markdown",
-                                reply_markup=back_markup,
-                            )
+                            await query.edit_message_text(text=msg, reply_markup=back_markup, parse_mode="Markdown")
                         except Exception:
-                            pass
+                            try:
+                                await context.bot.send_message(
+                                    chat_id=query.message.chat_id,
+                                    text=msg,
+                                    parse_mode="Markdown",
+                                    reply_markup=back_markup,
+                                )
+                            except Exception:
+                                pass
+                    return SELECTING_USER
+
+                ok, new_expire, username = await preview_extension_date(uuid, update.effective_user.id, allow_any_owner=allow_any_owner)
+                if not ok or not new_expire:
+                    await query.answer(new_expire or "❌ Ошибка", show_alert=True)
+                    return SELECTING_USER
+                target_date = new_expire[:10]
+                name_md = escape_markdown(username or "")
+                text = f"⚡ Продлить подписку `{name_md}` до {target_date} и сбросить трафик?"
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton(f"✅ Продлить до {target_date}", callback_data=f"user_action_extend_confirm_{uuid}")],
+                    [InlineKeyboardButton("🔙 Назад к пользователю", callback_data=f"view_{uuid}")],
+                ])
+                try:
+                    await query.edit_message_text(text=text, reply_markup=keyboard, parse_mode="Markdown")
+                except Exception:
+                    await context.bot.send_message(
+                        chat_id=query.message.chat_id,
+                        text=text,
+                        parse_mode="Markdown",
+                        reply_markup=keyboard,
+                    )
                 return SELECTING_USER
             elif action == "disable":
                 context.user_data["action"] = "disable"

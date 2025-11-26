@@ -373,6 +373,38 @@ def _format_expire_iso(dt: datetime) -> str:
     return padded.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
+def _compute_extension_date(user: Dict) -> datetime:
+    base_date = datetime.now().astimezone()
+    try:
+        if user.get("expireAt"):
+            base_date = datetime.fromisoformat(user["expireAt"].replace("Z", "+00:00"))
+    except Exception:
+        base_date = datetime.now().astimezone()
+    return base_date + timedelta(days=30)
+
+
+async def preview_extension_date(
+    user_uuid: str,
+    actor_id: int,
+    *,
+    allow_any_owner: bool = False,
+) -> Tuple[bool, Optional[str], Optional[str]]:
+    """Return target expire date (ISO str) and username for preview."""
+    user = await UserAPI.get_user_by_uuid(user_uuid)
+    if not user:
+        return False, "❌ Пользователь не найден.", None
+
+    tag = str(user.get("tag") or "").strip()
+    if not allow_any_owner:
+        if not (tag.isdigit() and int(tag) == actor_id):
+            return False, "❌ Этот пользователь не привязан к вам.", None
+
+    new_dt = _compute_extension_date(user)
+    new_expire = _format_expire_iso(new_dt)
+    username = user.get("username") or user.get("email") or user.get("uuid") or "Без имени"
+    return True, new_expire, username
+
+
 async def extend_user_subscription_and_reset(
     user_uuid: str,
     actor_id: int,
@@ -392,14 +424,7 @@ async def extend_user_subscription_and_reset(
         if not (tag.isdigit() and int(tag) == actor_id):
             return False, "❌ Этот пользователь не привязан к вам."
 
-    base_date = datetime.now().astimezone()
-    try:
-        if user.get("expireAt"):
-            base_date = datetime.fromisoformat(user["expireAt"].replace("Z", "+00:00"))
-    except Exception:
-        base_date = datetime.now().astimezone()
-
-    new_expire = _format_expire_iso(base_date + timedelta(days=30))
+    new_expire = _format_expire_iso(_compute_extension_date(user))
 
     try:
         await UserAPI.update_user(user_uuid, {"expireAt": new_expire})
