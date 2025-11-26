@@ -147,6 +147,26 @@ GB = 1024 * 1024 * 1024
 DEFAULT_NON_SUPERADMIN_LIMIT_GB = 200
 
 
+def _edit_cached_message(context: ContextTypes.DEFAULT_TYPE, text: str, reply_markup=None, parse_mode: str | None = None) -> bool:
+    """Try to edit the last cached prompt message; return True on success."""
+    cached = context.user_data.get("active_edit_message")
+    if not cached:
+        return False
+    try:
+        bot = context.bot
+        bot.edit_message_text(
+            chat_id=cached["chat_id"],
+            message_id=cached["message_id"],
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+        )
+        return True
+    except Exception as exc:
+        logger.debug("Failed to edit cached message: %s", exc)
+        return False
+
+
 def _filter_create_fields(fields: List[str], ensure_username: bool = True) -> List[str]:
     """Filter out excluded fields while keeping username available."""
     filtered: List[str] = []
@@ -3625,6 +3645,11 @@ async def handle_edit_field_selection(update: Update, context: ContextTypes.DEFA
             reply_markup=reply_markup,
             parse_mode="Markdown"
         )
+        if query.message:
+            context.user_data["active_edit_message"] = {
+                "chat_id": query.message.chat_id,
+                "message_id": query.message.message_id,
+            }
         
         return EDIT_VALUE
 
@@ -3818,6 +3843,12 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
         return USER_MENU
     
     value = update.message.text.strip()
+    keyboard_success = InlineKeyboardMarkup([
+        [InlineKeyboardButton("👁️ Просмотр пользователя", callback_data=f"view_{user['uuid']}")],
+        [InlineKeyboardButton("📝 Продолжить редактирование", callback_data=f"edit_{user['uuid']}")],
+        [InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_list")]
+    ])
+    keyboard_error = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data=f"edit_{user['uuid']}")]])
     
     # Process the value based on the field
     if field == "expireAt":
@@ -3826,16 +3857,9 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
             base_date = datetime.now().astimezone()
             value = _parse_expire_input(value, base_date=base_date)
         except ValueError:
-            keyboard = [
-                [InlineKeyboardButton("🔙 Назад", callback_data=f"edit_{user['uuid']}")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                "❌ Неверный формат. Введите дату как `YYYY-MM-DD`, либо относительное значение вроде `30d` или `2m`.",
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+            text = "❌ Неверный формат. Введите дату как `YYYY-MM-DD`, либо относительное значение вроде `30d` или `2m`."
+            if not _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
+                await update.message.reply_text(text, reply_markup=keyboard_error, parse_mode="Markdown")
             return EDIT_USER
     
     elif field == "trafficLimitBytes":
@@ -3845,46 +3869,25 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
                 raise ValueError("Traffic limit cannot be negative")
             user_is_super_admin = bool(update.effective_user and is_super_admin_user(update.effective_user.id))
             if gb == 0 and not user_is_super_admin:
-                keyboard = [
-                    [InlineKeyboardButton("🔙 Назад", callback_data=f"edit_{user['uuid']}")]
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                
-                await update.message.reply_text(
-                    "❌ Безлимитный лимит доступен только суперадмину. Введите другое значение.",
-                    reply_markup=reply_markup,
-                    parse_mode="Markdown"
-                )
+                text = "❌ Безлимитный лимит доступен только суперадмину. Введите другое значение."
+                if not _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
+                    await update.message.reply_text(text, reply_markup=keyboard_error, parse_mode="Markdown")
                 return EDIT_USER
             # Convert GB to bytes (0 stays unlimited)
             value = 0 if gb == 0 else gb * 1024 * 1024 * 1024
         except ValueError:
-            keyboard = [
-                [InlineKeyboardButton("🔙 Назад", callback_data=f"edit_{user['uuid']}")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                "❌ Неверный формат. Введите целое число ГБ (0 — безлимит, доступен только суперадмину).",
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+            text = "❌ Неверный формат. Введите целое число ГБ (0 — безлимит, доступен только суперадмину)."
+            if not _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
+                await update.message.reply_text(text, reply_markup=keyboard_error, parse_mode="Markdown")
             return EDIT_USER
     
     elif field == "telegramId":
         try:
             value = int(value)
         except ValueError:
-            keyboard = [
-                [InlineKeyboardButton("🔙 Назад", callback_data=f"edit_{user['uuid']}")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                "❌ Неверный формат Telegram ID. Введите целое число.",
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+            text = "❌ Неверный формат Telegram ID. Введите целое число."
+            if not _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
+                await update.message.reply_text(text, reply_markup=keyboard_error, parse_mode="Markdown")
             return EDIT_USER
             
     elif field == "hwidDeviceLimit":
@@ -3893,16 +3896,9 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
             if value < 0:
                 raise ValueError("Device limit cannot be negative")
         except ValueError:
-            keyboard = [
-                [InlineKeyboardButton("🔙 Назад", callback_data=f"edit_{user['uuid']}")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                "❌ Неверный формат числа. Введите целое число >= 0.",
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+            text = "❌ Неверный формат числа. Введите целое число >= 0."
+            if not _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
+                await update.message.reply_text(text, reply_markup=keyboard_error, parse_mode="Markdown")
             return EDIT_USER
     
     # Update the user with the new value
@@ -3917,29 +3913,30 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
     if result:
         user_cache.invalidate_user(user["uuid"])
         user_cache.invalidate_all_users()
-        keyboard = [
-            [InlineKeyboardButton("👁️ Просмотр пользователя", callback_data=f"view_{user['uuid']}")],
-            [InlineKeyboardButton("📝 Продолжить редактирование", callback_data=f"edit_{user['uuid']}")],
-            [InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_list")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(
+        context.user_data.pop("active_edit_message", None)
+        if not _edit_cached_message(
+            context,
             f"✅ Поле {field} успешно обновлено.",
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
-        )
+            reply_markup=keyboard_success,
+            parse_mode="Markdown",
+        ):
+            await update.message.reply_text(
+                f"✅ Поле {field} успешно обновлено.",
+                reply_markup=keyboard_success,
+                parse_mode="Markdown"
+            )
     else:
-        keyboard = [
-            [InlineKeyboardButton("🔙 Назад", callback_data=f"edit_{user['uuid']}")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(
+        if not _edit_cached_message(
+            context,
             f"❌ Не удалось обновить поле {field}.",
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
-        )
+            reply_markup=keyboard_error,
+            parse_mode="Markdown",
+        ):
+            await update.message.reply_text(
+                f"❌ Не удалось обновить поле {field}.",
+                reply_markup=keyboard_error,
+                parse_mode="Markdown"
+            )
     
     return EDIT_USER
 
