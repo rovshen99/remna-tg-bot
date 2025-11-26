@@ -3758,6 +3758,8 @@ async def handle_edit_field_selection(update: Update, context: ContextTypes.DEFA
                 "chat_id": query.message.chat_id,
                 "message_id": query.message.message_id,
             }
+            # delete any prior edit prompt message to avoid duplicates
+            await _delete_active_edit_message(context)
         
         return EDIT_VALUE
 
@@ -4023,32 +4025,38 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
     if result:
         user_cache.invalidate_user(user["uuid"])
         user_cache.invalidate_all_users()
-        context.user_data.pop("active_edit_message", None)
-        await _delete_active_edit_message(context)
-        if not await _edit_cached_message(
+        # Try to replace the prompt with success message; if failed, delete prompt and send new
+        edited = await _edit_cached_message(
             context,
             f"✅ Поле {field} успешно обновлено.",
             reply_markup=keyboard_success,
             parse_mode="Markdown",
-        ):
+        )
+        if not edited:
+            await _delete_active_edit_message(context)
             await update.message.reply_text(
                 f"✅ Поле {field} успешно обновлено.",
                 reply_markup=keyboard_success,
                 parse_mode="Markdown"
             )
+        else:
+            context.user_data.pop("active_edit_message", None)
     else:
-        await _delete_active_edit_message(context)
-        if not await _edit_cached_message(
+        edited = await _edit_cached_message(
             context,
             f"❌ Не удалось обновить поле {field}.",
             reply_markup=keyboard_error,
             parse_mode="Markdown",
-        ):
+        )
+        if not edited:
+            await _delete_active_edit_message(context)
             await update.message.reply_text(
                 f"❌ Не удалось обновить поле {field}.",
                 reply_markup=keyboard_error,
                 parse_mode="Markdown"
             )
+        else:
+            context.user_data.pop("active_edit_message", None)
     
     return EDIT_USER
 
