@@ -36,6 +36,7 @@ from modules.handlers.core.language import (
 from modules.services.expiration_notifier import (
     build_admin_notification,
     build_superadmin_notification,
+    extend_user_subscription_and_reset,
 )
 
 async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -89,6 +90,24 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
     logger.info(f"Handling menu callback: {data}")
     logger.info(f"Current state: {context.user_data.get('conversation_state', 'unknown')}")
     logger.info(f"==============================")
+
+    if data.startswith("expire_extend_"):
+        uuid = data.replace("expire_extend_", "", 1)
+        allow_any_owner = bool(is_superadmin)
+        success, msg = await extend_user_subscription_and_reset(
+            uuid, update.effective_user.id, allow_any_owner=allow_any_owner
+        )
+        await query.answer(msg, show_alert=not success)
+        if success and query.message:
+            try:
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=msg,
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                pass
+        return MAIN_MENU
 
     if data == "users" or data == "menu_users":
         await show_users_menu(update, context)

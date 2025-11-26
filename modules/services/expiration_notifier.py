@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, time as dtime
 from typing import Dict, Iterable, List, Optional, Tuple, Sequence
 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, ContextTypes
 
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -164,12 +165,28 @@ async def _notify_admins(
         if admin_id not in admin_records:
             continue
         text = _build_admin_message(items)
+        keyboard_rows = []
+        for user, _ in items:
+            username = user.get("username") or user.get("email") or user.get("uuid") or "Без имени"
+            uuid = user.get("uuid")
+            if not uuid:
+                continue
+            keyboard_rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"🔄 +30д и сброс — {username}",
+                        callback_data=f"expire_extend_{uuid}",
+                    )
+                ]
+            )
+        reply_markup = InlineKeyboardMarkup(keyboard_rows) if keyboard_rows else None
         try:
             await context.bot.send_message(
                 chat_id=admin_id,
                 text=text,
                 parse_mode="Markdown",
                 disable_web_page_preview=True,
+                reply_markup=reply_markup,
             )
             logger.debug("Sent expiration reminder to admin %s (%d users).", admin_id, len(items))
             sent += 1
@@ -300,6 +317,54 @@ def _format_user_line(user: Dict, expire_at: datetime) -> str:
     username = user.get("username") or user.get("email") or user.get("uuid") or "Без имени"
     expire_str = expire_at.astimezone(NOTIFICATION_TZ).strftime("%d.%m.%Y %H:%M")
     return f"• `{escape_markdown(username)}` — до {expire_str}"
+
+
+def _format_expire_iso(dt: datetime) -> str:
+    padded = dt + timedelta(minutes=10)
+    return padded.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+async def extend_user_subscription_and_reset(
+    user_uuid: str,
+    actor_id: int,
+    *,
+    allow_any_owner: bool = False,
+) -> Tuple[bool, str]:
+    """
+    Extend user's expiration by 30 days and reset traffic.
+    If allow_any_owner=False, checks that user.tag matches actor_id (for dealers).
+    """
+    user = await UserAPI.get_user_by_uuid(user_uuid)
+    if not user:
+        return False, "❌ Пользователь не найден."
+
+    tag = str(user.get("tag") or "").strip()
+    if not allow_any_owner:
+        if not (tag.isdigit() and int(tag) == actor_id):
+            return False, "❌ Этот пользователь не привязан к вам."
+
+    base_date = datetime.now().astimezone()
+    try:
+        if user.get("expireAt"):
+            base_date = datetime.fromisoformat(user["expireAt"].replace("Z", "+00:00"))
+    except Exception:
+        base_date = datetime.now().astimezone()
+
+    new_expire = _format_expire_iso(base_date + timedelta(days=30))
+
+    try:
+        await UserAPI.update_user(user_uuid, {"expireAt": new_expire})
+    except Exception as exc:
+        logger.error("Failed to update expireAt for %s: %s", user_uuid, exc)
+        return False, "❌ Не удалось обновить дату истечения."
+
+    try:
+        await UserAPI.reset_user_traffic(user_uuid)
+    except Exception as exc:
+        logger.error("Failed to reset traffic for %s: %s", user_uuid, exc)
+        return False, "❌ Не удалось сбросить трафик (дата продлена)."
+
+    return True, f"✅ Продлено до {new_expire[:10]} и сброшен трафик."
 
 
 def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
