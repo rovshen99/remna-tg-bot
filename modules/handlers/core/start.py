@@ -55,10 +55,12 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if stored_is_superadmin is not None
             else is_super_admin_user(user.id)
         )
+        is_admin_only = is_admin and not is_superadmin
     else:
         role = None
         is_admin = False
         is_superadmin = False
+        is_admin_only = False
 
     can_manage_users = is_admin or is_superadmin
     context.user_data["role"] = role
@@ -129,7 +131,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             ]
         )
-        if EXPIRATION_NOTIFICATION_ENABLED:
+        if EXPIRATION_NOTIFICATION_ENABLED and is_admin_only:
             keyboard.append(
                 [
                     InlineKeyboardButton(

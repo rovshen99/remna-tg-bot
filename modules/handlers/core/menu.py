@@ -51,6 +51,7 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
     role = get_user_role(update.effective_user.id)
     is_admin = is_admin_user(update.effective_user.id)
     is_superadmin = is_super_admin_user(update.effective_user.id)
+    is_admin_only = is_admin and not is_superadmin
     context.user_data['role'] = role
     context.user_data['is_admin'] = is_admin
     context.user_data['is_superadmin'] = is_superadmin

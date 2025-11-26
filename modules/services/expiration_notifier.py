@@ -2,7 +2,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, time as dtime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, Sequence
 
 from telegram.ext import Application, ContextTypes
 
@@ -73,7 +73,11 @@ def schedule_expiration_notifications(application: Application) -> None:
     )
 
 
-async def notify_expiring_subscriptions(context: ContextTypes.DEFAULT_TYPE) -> NotificationResult:
+async def notify_expiring_subscriptions(
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    superadmin_targets: Optional[Iterable[int]] = None,
+) -> NotificationResult:
     """Job callback: notify admins about soon-to-expire subscriptions."""
     try:
         expiring_users = await _collect_expiring_users(EXPIRATION_NOTIFICATION_DAYS)
@@ -93,7 +97,12 @@ async def notify_expiring_subscriptions(context: ContextTypes.DEFAULT_TYPE) -> N
     grouped_users = _group_by_owner(expiring_users)
 
     admin_count = await _notify_admins(context, grouped_users, admin_records)
-    superadmin_count = await _notify_superadmins(context, grouped_users, admin_records)
+    superadmin_count = await _notify_superadmins(
+        context,
+        grouped_users,
+        admin_records,
+        superadmin_targets=superadmin_targets,
+    )
     total_users = sum(len(items) for items in grouped_users.values())
 
     return NotificationResult(
@@ -174,8 +183,15 @@ async def _notify_superadmins(
     context: ContextTypes.DEFAULT_TYPE,
     grouped_users: Dict[Optional[int], List[ExpiringUser]],
     admin_records: Dict[int, Dict],
+    superadmin_targets: Optional[Iterable[int]] = None,
 ) -> int:
-    if not SUPER_ADMINS:
+    targets: Sequence[int]
+    if superadmin_targets is None:
+        targets = list(SUPER_ADMINS)
+    else:
+        targets = [int(t) for t in superadmin_targets]
+
+    if not targets:
         return 0
 
     message = _build_superadmin_message(grouped_users, admin_records)
@@ -183,7 +199,7 @@ async def _notify_superadmins(
         return 0
 
     sent = 0
-    for chat_id in SUPER_ADMINS:
+    for chat_id in targets:
         try:
             await context.bot.send_message(
                 chat_id=chat_id,

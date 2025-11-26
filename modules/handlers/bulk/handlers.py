@@ -15,7 +15,9 @@ from modules.api.users import UserAPI
 from modules.utils.selection_helpers import SelectionHelper
 from modules.handlers.core.start import show_main_menu
 from modules.utils.auth import check_superadmin
-from modules.services.expiration_notifier import notify_expiring_subscriptions
+from modules.services.expiration_notifier import (
+    build_superadmin_notification,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +173,6 @@ async def handle_bulk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⏳ Собираю пользователей с истекающей подпиской...",
             parse_mode="Markdown",
         )
-        result = await notify_expiring_subscriptions(context)
         keyboard = [
             [
                 InlineKeyboardButton(
@@ -182,20 +183,15 @@ async def handle_bulk_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        if not result or result.had_error:
-            message = "⚠️ Не удалось отправить уведомления. Проверьте логи."
-        elif not result.has_items:
+        message_text = await build_superadmin_notification()
+
+        if not message_text:
             message = (
                 f"ℹ️ В ближайшие {EXPIRATION_NOTIFICATION_DAYS} дн. нет пользователей "
                 "с истекающей подпиской."
             )
         else:
-            message = (
-                "✅ Уведомления отправлены.\n\n"
-                f"Пользователей в окне {EXPIRATION_NOTIFICATION_DAYS} дн.: {result.total_users}\n"
-                f"Администраторы уведомлены: {result.notified_admins}\n"
-                f"Суперадминистраторы уведомлены: {result.notified_superadmins}"
-            )
+            message = message_text
 
         await query.edit_message_text(
             message,
