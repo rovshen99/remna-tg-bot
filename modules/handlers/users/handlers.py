@@ -2978,6 +2978,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
 
                     await update.message.reply_text(
                         "❌ Неверный формат имени пользователя. Используйте только буквы, цифры, подчеркивания и дефисы. Длина должна быть от 6 до 34 символов.\n\nВведите имя ещё раз:",
+                        reply_markup=reply_markup,
                         parse_mode="Markdown"
                     )
                     return CREATE_USER_FIELD
