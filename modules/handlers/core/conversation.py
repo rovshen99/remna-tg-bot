@@ -69,9 +69,6 @@ def create_conversation_handler():
         entry_points=[CommandHandler("start", start)],
         states={
             MAIN_MENU: [
-                CallbackQueryHandler(handle_menu_selection)
-            ],
-            MAIN_MENU: [
                 CallbackQueryHandler(handle_menu_selection, pattern="^expire_extend_"),
                 CallbackQueryHandler(handle_menu_selection)
             ],
