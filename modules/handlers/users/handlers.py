@@ -4283,6 +4283,11 @@ async def handle_cancel_user_creation(update: Update, context: ContextTypes.DEFA
     for key in keys_to_remove:
         context.user_data.pop(key, None)
     
-    # Возвращаемся в меню пользователей
-    await show_users_menu(update, context)
-    return USER_MENU
+    # Возвращаемся в меню пользователей (с запасным вариантом на главное меню)
+    try:
+        await show_users_menu(update, context)
+        return USER_MENU
+    except Exception as exc:
+        logger.warning("Failed to show users menu after cancel_create: %s", exc)
+        await show_main_menu(update, context)
+        return MAIN_MENU

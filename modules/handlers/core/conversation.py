@@ -70,7 +70,8 @@ def create_conversation_handler():
         states={
             MAIN_MENU: [
                 CallbackQueryHandler(handle_menu_selection, pattern="^expire_extend_"),
-                CallbackQueryHandler(handle_menu_selection)
+                CallbackQueryHandler(handle_menu_selection),
+                CallbackQueryHandler(handle_cancel_user_creation, pattern="^cancel_create$")
             ],
             USER_MENU: [
                 CallbackQueryHandler(handle_users_menu)
