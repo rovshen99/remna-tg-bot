@@ -3353,11 +3353,18 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
             error_message += "Пожалуйста, проверьте введенные данные."
         
         if update.callback_query:
-            await update.callback_query.edit_message_text(
-                text=error_message,
+            edited = await safe_edit_message(
+                update.callback_query,
+                error_message,
                 reply_markup=reply_markup,
-                parse_mode="Markdown"
+                parse_mode="Markdown",
             )
+            if not edited and update.effective_chat:
+                await update.effective_chat.send_message(
+                    text=error_message,
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown",
+                )
         else:
             await update.message.reply_text(
                 text=error_message,
