@@ -99,6 +99,47 @@ class UserAPI:
         except Exception as e:
             logger.error(f"Error getting users count: {e}")
             return 0
+
+    @staticmethod
+    async def get_all_hwid_devices():
+        """Fetch all HWID devices with pagination support"""
+        all_devices = []
+        start = 0
+        size = 500
+
+        while True:
+            params = {"size": size, "start": start}
+            try:
+                response = await RemnaAPI.get("hwid/devices", params=params)
+            except Exception as e:
+                logger.error(f"Error fetching HWID devices batch (start={start}, size={size}): {e}")
+                break
+
+            devices = []
+            total = None
+            if isinstance(response, dict):
+                if "devices" in response:
+                    devices = response.get("devices") or []
+                    total = response.get("total")
+                elif "response" in response and isinstance(response["response"], dict):
+                    devices = response["response"].get("devices") or []
+                    total = response["response"].get("total")
+            elif isinstance(response, list):
+                devices = response
+
+            if not devices:
+                break
+
+            all_devices.extend(devices)
+
+            # Stop if we got less than requested or reached total
+            if len(devices) < size or (total is not None and len(all_devices) >= total):
+                break
+
+            start += size
+
+        logger.info("Retrieved %d HWID devices total", len(all_devices))
+        return all_devices
     
     @staticmethod
     async def get_user_by_uuid(uuid):

@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes, ConversationHandler
 
@@ -11,6 +12,7 @@ from modules.config import (
     GOOGLE_OAUTH_TOKEN_FILE,
     GOOGLE_SERVICE_ACCOUNT_FILE,
 )
+from modules.api.users import UserAPI
 from modules.handlers.core.start import show_main_menu
 from modules.utils import admin_store
 from modules.utils.auth import check_superadmin
@@ -23,6 +25,76 @@ def _format_admin_label(admin: dict) -> str:
     name = admin.get("display_name") or "Без имени"
     status = "🟢" if admin.get("is_active") else "🔴"
     return f"{status} {name} ({admin['user_id']})"
+
+
+def _parse_owner_id(tag_value):
+    """Convert numeric tag to owner id or return None."""
+    tag = str(tag_value or "").strip()
+    return int(tag) if tag.isdigit() else None
+
+
+def _format_status_counts(counts: dict, title: str) -> str:
+    status_order = [
+        ("ACTIVE", "✅"),
+        ("LIMITED", "⚠️"),
+        ("EXPIRED", "⏰"),
+        ("DISABLED", "❌"),
+    ]
+    parts = []
+    for status, emoji in status_order:
+        count = int(counts.get(status, 0))
+        if count > 0:
+            parts.append(f"{emoji} {count}")
+
+    if not parts:
+        return f"{title}: 0"
+    return f"{title}: " + " / ".join(parts)
+
+
+async def _collect_dealer_usage_stats():
+    """Collect per-dealer user status and HWID device counts grouped by user status."""
+    dealer_user_stats: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    dealer_device_stats: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    user_owner_status: dict[str, tuple[int, str]] = {}
+
+    try:
+        users_response = await UserAPI.get_all_users()
+        users = []
+        if isinstance(users_response, dict):
+            if "users" in users_response:
+                users = users_response["users"]
+            elif "response" in users_response and isinstance(users_response["response"], dict):
+                users = users_response["response"].get("users") or []
+        elif isinstance(users_response, list):
+            users = users_response
+
+        for user in users:
+            owner_id = _parse_owner_id(user.get("tag"))
+            if owner_id is None:
+                continue
+            status = str(user.get("status") or "UNKNOWN").upper()
+            dealer_user_stats[owner_id][status] += 1
+            user_uuid = user.get("uuid")
+            if user_uuid:
+                user_owner_status[user_uuid] = (owner_id, status)
+    except Exception as exc:
+        logger.error("Failed to collect dealer user stats: %s", exc)
+
+    try:
+        devices = await UserAPI.get_all_hwid_devices()
+        for device in devices or []:
+            user_uuid = device.get("userUuid") or device.get("user_uuid")
+            if not user_uuid:
+                continue
+            owner_info = user_owner_status.get(user_uuid)
+            if not owner_info:
+                continue
+            owner_id, status = owner_info
+            dealer_device_stats[owner_id][status] += 1
+    except Exception as exc:
+        logger.error("Failed to collect dealer device stats: %s", exc)
+
+    return dealer_user_stats, dealer_device_stats
 
 
 def _build_admins_keyboard() -> InlineKeyboardMarkup:
@@ -57,11 +129,19 @@ def _build_admins_keyboard() -> InlineKeyboardMarkup:
 async def show_admins_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show admins management menu"""
     admins = admin_store.list_admins()
+    dealer_user_stats, dealer_device_stats = await _collect_dealer_usage_stats()
     message = "👑 *Управление диллерами*\n\n"
     if admins:
         message += "Сейчас назначены:\n"
         for admin in admins:
-            message += f"• {_format_admin_label(admin)}\n"
+            admin_id = int(admin["user_id"])
+            user_counts = dealer_user_stats.get(admin_id, {})
+            device_counts = dealer_device_stats.get(admin_id, {})
+            stats_parts = [
+                _format_status_counts(user_counts, "Пользователи"),
+                _format_status_counts(device_counts, "Устройства"),
+            ]
+            message += f"• {_format_admin_label(admin)} — " + "; ".join(stats_parts) + "\n"
     else:
         message += "Список диллеров пуст.\n"
 
