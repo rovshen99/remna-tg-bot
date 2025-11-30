@@ -47,8 +47,13 @@ def _format_status_counts(counts: dict, title: str) -> str:
             parts.append(f"{emoji} {count}")
 
     if not parts:
-        return f"{title}: 0"
+        return f"{title}: ▫️0"
     return f"{title}: " + " / ".join(parts)
+
+
+def _format_category(counts: dict, icon: str, title: str) -> str:
+    """Human-friendly line for a category (users/devices) with statuses."""
+    return f"  {icon} {_format_status_counts(counts, title)}"
 
 
 async def _collect_dealer_usage_stats():
@@ -130,18 +135,31 @@ async def show_admins_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show admins management menu"""
     admins = admin_store.list_admins()
     dealer_user_stats, dealer_device_stats = await _collect_dealer_usage_stats()
-    message = "👑 *Управление диллерами*\n\n"
+    status_legend = "Легенда статусов: ✅ актив / ⚠️ ограничен / ⏰ истёк / ❌ выключен\n\n"
+    message = "👑 *Управление диллерами*\n\n" + status_legend
     if admins:
         message += "Сейчас назначены:\n"
-        for admin in admins:
+        # сортируем по имени для стабильного порядка
+        sorted_admins = sorted(admins, key=lambda a: (a.get("display_name") or "").lower())
+        total_user_counts: dict[str, int] = defaultdict(int)
+        total_device_counts: dict[str, int] = defaultdict(int)
+        for admin in sorted_admins:
             admin_id = int(admin["user_id"])
             user_counts = dealer_user_stats.get(admin_id, {})
             device_counts = dealer_device_stats.get(admin_id, {})
-            stats_parts = [
-                _format_status_counts(user_counts, "Пользователи"),
-                _format_status_counts(device_counts, "Устройства"),
-            ]
-            message += f"• {_format_admin_label(admin)} — " + "; ".join(stats_parts) + "\n"
+            for k, v in user_counts.items():
+                total_user_counts[k] += v
+            for k, v in device_counts.items():
+                total_device_counts[k] += v
+
+            message += f"• {_format_admin_label(admin)}\n"
+            message += _format_category(user_counts, "👥", "Пользователи") + "\n"
+            message += _format_category(device_counts, "📱", "Устройства") + "\n"
+
+        if total_user_counts or total_device_counts:
+            message += "\nИтого по всем диллерам:\n"
+            message += _format_category(total_user_counts, "👥", "Пользователи") + "\n"
+            message += _format_category(total_device_counts, "📱", "Устройства") + "\n"
     else:
         message += "Список диллеров пуст.\n"
 
