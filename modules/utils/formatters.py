@@ -253,6 +253,7 @@ def format_user_details_safe(user):
     subscription_uuid = escape_markdown(user.get("subscriptionUuid", "")) if user.get("subscriptionUuid") else None
     traffic_strategy = escape_markdown(user.get("trafficLimitStrategy", "")) if user.get("trafficLimitStrategy") else "—"
     status_value = escape_markdown(user.get("status", "UNKNOWN"))
+    online_raw = user.get("onlineAt")
 
     try:
         expire_raw = user.get("expireAt")
@@ -286,22 +287,21 @@ def format_user_details_safe(user):
     traffic_limit = format_bytes(user.get("trafficLimitBytes"))
     message += f"📊 Статус: {status_emoji} {status_value}\n"
     message += f"📈 Трафик: {used_traffic}/{traffic_limit}\n"
-    # message += f"🔄 Стратегия сброса: {traffic_strategy}\n"
     message += f"{expire_status} Истекает: {escape_markdown(expire_text)}\n\n"
 
-    # description = user.get("description")
-    # if description:
-    #     preferred = resolve_description_link(description)
-    #     label = "Drive" if SUBSCRIPTION_DRIVE_LINK else "Happ"
-    #     if preferred:
-    #         message += (
-    #             f"📝 Описание ({label}):\n"
-    #             f"```\n"
-    #             f"{preferred}\n"
-    #             f"```\n"
-    #         )
-    #     else:
-    #         message += f"📝 Описание: `{escape_markdown(description)}`\n"
+    def _fmt_online(raw: str | None) -> str:
+        if not raw:
+            return ""
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            return dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return raw
+
+    if online_raw:
+        message += f"🕒 Был онлайн: {escape_markdown(escape_markdown(_fmt_online(online_raw)))}\n"
+    if not online_raw and used_traffic == '0 B':
+        message += f"🕒 Еще не был подключен\n"
 
     hwid_limit = user.get("hwidDeviceLimit")
     if hwid_limit:

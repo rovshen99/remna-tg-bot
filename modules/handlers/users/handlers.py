@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse, parse_qs
 from io import BytesIO
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes, ConversationHandler
 import re
 import asyncio
@@ -1447,6 +1448,20 @@ async def show_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             reply_markup=keyboard,
             parse_mode = "Markdown"
         )
+    except BadRequest as e:
+        if "Message is not modified" in str(e):
+            logger.debug("User details not modified; skipping edit.")
+        else:
+            logger.error(f"Error sending user details: {e}")
+            try:
+                await update.callback_query.edit_message_caption(
+                    caption=message,
+                    reply_markup=keyboard,
+                    parse_mode="Markdown"
+                )
+            except Exception as e2:
+                logger.error(f"Fallback to edit_message_caption failed: {e2}")
+                await update.callback_query.answer("❌ Ошибка при отображении данных")
     except Exception as e:
         logger.error(f"Error sending user details: {e}")
         try:
