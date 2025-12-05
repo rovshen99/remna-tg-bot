@@ -19,6 +19,7 @@ from modules.config import (
     EXPIRATION_NOTIFICATION_HOUR,
     EXPIRATION_NOTIFICATION_MINUTE,
     EXPIRATION_NOTIFICATION_TZ,
+    ADMIN_NOTIFICATIONS_CHAT_ID,
     SUPER_ADMIN_USER_IDS,
 )
 
@@ -256,6 +257,9 @@ async def _notify_superadmins(
         targets = list(SUPER_ADMINS)
     else:
         targets = [int(t) for t in superadmin_targets]
+
+    if ADMIN_NOTIFICATIONS_CHAT_ID is not None:
+        targets = [ADMIN_NOTIFICATIONS_CHAT_ID]
 
     if not targets:
         return 0

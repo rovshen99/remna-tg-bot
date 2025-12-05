@@ -76,6 +76,7 @@ Required:
 - `REMNAWAVE_API_TOKEN` — API token (when using token-based auth)
 - `SUPER_ADMIN_USER_IDS` — comma-separated list of super admins (full access)
 - `OPERATOR_USER_IDS` — list of operator IDs with read access (e.g. `789012345`)
+- `ADMIN_NOTIFICATIONS_CHAT_ID` — Telegram chat ID to deliver admin notifications (optional)
 
 Performance / UI tuning:
 - `DASHBOARD_SHOW_SYSTEM_STATS` (true/false)

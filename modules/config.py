@@ -91,6 +91,18 @@ else:
 ADMIN_DB_PATH = os.getenv("ADMIN_DB_PATH", os.path.join("data", "admins.db"))
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
+_admin_notifications_chat_id_raw = os.getenv("ADMIN_NOTIFICATIONS_CHAT_ID")
+ADMIN_NOTIFICATIONS_CHAT_ID: Optional[int] = None
+if _admin_notifications_chat_id_raw:
+    try:
+        ADMIN_NOTIFICATIONS_CHAT_ID = int(_admin_notifications_chat_id_raw.strip())
+        logger.info("Admin notifications will be sent to chat ID %s", ADMIN_NOTIFICATIONS_CHAT_ID)
+    except ValueError:
+        logger.error(
+            "Invalid ADMIN_NOTIFICATIONS_CHAT_ID '%s'. It must be an integer chat ID.",
+            _admin_notifications_chat_id_raw,
+        )
+
 
 def _resolve_path(value: Optional[str]) -> Optional[str]:
     if not value:
