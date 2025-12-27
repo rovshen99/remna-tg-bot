@@ -30,6 +30,7 @@ from modules.config import (
     CREATE_USER_EXCLUDED_FIELDS_SET,
     SUBSCRIPTION_DRIVE_LINK,
     SUBSCRIPTION_SCRIPT_URL,
+    HWID_DEVICE_LIMIT_PRESETS,
 )
 from modules.services.expiration_notifier import extend_user_subscription_and_reset
 
@@ -152,6 +153,29 @@ TEMPLATES_ENABLED = False
 
 GB = 1024 * 1024 * 1024
 DEFAULT_NON_SUPERADMIN_LIMIT_GB = 200
+
+def _format_device_limit_label(value: int) -> str:
+    """Return human-friendly device limit label for buttons and messages."""
+    if value == 0:
+        return "Без ограничений (0)"
+    if value == 1:
+        return "1 устройство"
+    if value in (2, 3, 4):
+        return f"{value} устройства"
+    return f"{value} устройств"
+
+
+def _build_device_limit_keyboard(prefix: str, options: List[int], per_row: int = 3) -> List[List[InlineKeyboardButton]]:
+    """Build inline keyboard rows for device limit presets."""
+    keyboard: List[List[InlineKeyboardButton]] = []
+    for i in range(0, len(options), per_row):
+        row_values = options[i:i + per_row]
+        row = [
+            InlineKeyboardButton(_format_device_limit_label(value), callback_data=f"{prefix}{value}")
+            for value in row_values
+        ]
+        keyboard.append(row)
+    return keyboard
 
 
 async def _delete_message_safe(bot, chat_id, message_id):
@@ -2536,15 +2560,16 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message += " Вы можете также ввести своё значение (целое число)."
         else:
             message += " Ввод произвольного значения недоступен."
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("1 устройство", callback_data="create_device_1"),
-                InlineKeyboardButton("2 устройства", callback_data="create_device_2")
-            ]
-        ]
+
+        presets = list(HWID_DEVICE_LIMIT_PRESETS)
         if user_is_super_admin:
-            keyboard.append([InlineKeyboardButton("Без лимита (0)", callback_data="create_device_0")])
+            presets = sorted(set(presets + [0]))
+
+        if presets:
+            readable_presets = ", ".join(_format_device_limit_label(limit) for limit in presets)
+            message += f"\nДоступные значения: {readable_presets}."
+
+        keyboard = _build_device_limit_keyboard("create_device_", presets)
         keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2624,14 +2649,10 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
             display_value = "Безлимитный" if current_value == 0 else format_bytes(current_value)
             keyboard.insert(0, [InlineKeyboardButton(f"✅ Оставить: {display_value}", callback_data=f"use_template_value_{field}")])
         elif field == "hwidDeviceLimit":
-            if current_value == 0:
-                display_value = "Без лимита"
-            elif current_value == 1:
-                display_value = "1 устройство"
-            elif current_value in [2, 3, 4]:
-                display_value = f"{current_value} устройства"
-            else:
-                display_value = f"{current_value} устройств"
+            try:
+                display_value = _format_device_limit_label(int(current_value))
+            except Exception:
+                display_value = str(current_value)
             keyboard.insert(0, [InlineKeyboardButton(f"✅ Оставить: {display_value}", callback_data=f"use_template_value_{field}")])
         elif field == "trafficLimitStrategy":
             strategy_map = {
@@ -2934,15 +2955,7 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     value = int(device_limit_str)
                     context.user_data["create_user"][field] = value
                     
-                    # Формируем читаемое представление (с правильным окончанием для числа устройств)
-                    if value == 0:
-                        readable_value = "Без лимита"
-                    elif value == 1:
-                        readable_value = "1 устройство"
-                    elif value in [2, 3, 4]:
-                        readable_value = f"{value} устройства"
-                    else:
-                        readable_value = f"{value} устройств"
+                    readable_value = _format_device_limit_label(value)
                     
                     # Если установлен лимит устройств > 0, нужно также установить trafficLimitStrategy = NO_RESET
                     if value > 0:
@@ -3171,7 +3184,7 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     # Set default device limit if not provided
     if "hwidDeviceLimit" not in user_data:
-        user_data["hwidDeviceLimit"] = 1
+        user_data["hwidDeviceLimit"] = HWID_DEVICE_LIMIT_PRESETS[0]
     
     # Set default description if not provided
     if "description" not in user_data or not user_data["description"]:
@@ -3901,6 +3914,11 @@ async def handle_edit_field_selection(update: Update, context: ContextTypes.DEFA
             display_value = "Безлимитный" if current_value == 0 else format_bytes(current_value)
         elif field == "expireAt":
             display_value = current_value[:10] if current_value else "Не указана"
+        elif field == "hwidDeviceLimit":
+            try:
+                display_value = _format_device_limit_label(int(current_value))
+            except Exception:
+                display_value = str(current_value) if current_value is not None else "Не указано"
         else:
             display_value = str(current_value) if current_value else "Не указано"
         
@@ -3956,19 +3974,14 @@ async def handle_edit_field_selection(update: Update, context: ContextTypes.DEFA
                 ],
             ])
         elif field == "hwidDeviceLimit":
-            message += "\nВведите лимит устройств (целое число). `0` — без ограничений.\nИли выберите готовое значение ниже:"
-            preset_keyboard.extend([
-                [
-                    InlineKeyboardButton("0", callback_data="edit_devices_0"),
-                    InlineKeyboardButton("1", callback_data="edit_devices_1"),
-                    InlineKeyboardButton("2", callback_data="edit_devices_2"),
-                ],
-                [
-                    InlineKeyboardButton("3", callback_data="edit_devices_3"),
-                    InlineKeyboardButton("5", callback_data="edit_devices_5"),
-                    InlineKeyboardButton("10", callback_data="edit_devices_10"),
-                ],
-            ])
+            message += "\nВведите лимит устройств (целое число). `0` — без ограничений."
+            presets = list(HWID_DEVICE_LIMIT_PRESETS)
+            if user_is_super_admin:
+                presets = sorted(set(presets + [0]))
+            if presets:
+                readable_presets = ", ".join(_format_device_limit_label(limit) for limit in presets)
+                message += f"\nИли выберите готовое значение ниже: {readable_presets}."
+                preset_keyboard.extend(_build_device_limit_keyboard("edit_devices_", presets))
 
         if preset_keyboard:
             keyboard = preset_keyboard + keyboard
@@ -4134,7 +4147,7 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
                     context.user_data["edit_user"].update(update_data)
                     user_cache.invalidate_user(user["uuid"])
                     user_cache.invalidate_all_users()
-                    shown = "Без ограничений" if devices == 0 else str(devices)
+                    shown = _format_device_limit_label(devices)
                     keyboard = [
                         [InlineKeyboardButton("👤 К пользователю", callback_data=f"view_{user['uuid']}")],
                         [InlineKeyboardButton("✏️ Продолжить редактирование", callback_data=f"edit_{user['uuid']}")],

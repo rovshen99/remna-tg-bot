@@ -94,6 +94,7 @@ Performance / UI tuning:
 - `GOOGLE_OAUTH_TOKEN_FILE` — user OAuth token JSON generated via `scripts/gdrive_oauth_setup.py`
 - `GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID` — Drive folder ID where each user gets a `{username}-{shortUuid}.txt` file with their links
 - `ACTIVE_INTERNAL_SQUADS` — comma-separated values automatically stored in `activeInternalSquads` for every new user
+- `HWID_DEVICE_LIMIT_PRESETS` — comma-separated presets for device-limit buttons (default: `1` for dealers)
 
 > Super admins are defined via `.env`. Regular admins are stored in SQLite and can be added/removed from the Telegram bot menu in production.
 

@@ -1,5 +1,5 @@
 import os
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from dotenv import load_dotenv
 import logging
@@ -147,6 +147,29 @@ def _parse_time_pair(value: str, default: Tuple[int, int] = (9, 0)) -> Tuple[int
         logger.warning("Invalid numeric time '%s'. Using default %s:%s", value, *default)
         return default
 
+def _parse_int_list(value: str, default: List[int], var_name: str) -> List[int]:
+    """Parse comma-separated integers from env, falling back to default on errors."""
+    if not value:
+        return default
+    result: List[int] = []
+    for part in value.split(","):
+        item = part.strip()
+        if not item:
+            continue
+        try:
+            number = int(item)
+        except ValueError:
+            logger.warning("%s contains a non-integer '%s'; skipping", var_name, item)
+            continue
+        if number < 0:
+            logger.warning("%s contains negative value %s; skipping", var_name, number)
+            continue
+        result.append(number)
+    if not result:
+        logger.warning("%s provided no valid values; using default %s", var_name, default)
+        return default
+    return sorted(set(result))
+
 
 EXPIRATION_NOTIFICATION_ENABLED = os.getenv("EXPIRATION_NOTIFICATION_ENABLED", "true").lower() == "true"
 EXPIRATION_NOTIFICATION_DAYS = max(1, _safe_int(os.getenv("EXPIRATION_NOTIFICATION_DAYS", "3"), 3))
@@ -201,3 +224,8 @@ DASHBOARD_SHOW_UPTIME = os.getenv("DASHBOARD_SHOW_UPTIME", "true").lower() == "t
 # Настройки поиска пользователей
 ENABLE_PARTIAL_SEARCH = os.getenv("ENABLE_PARTIAL_SEARCH", "true").lower() == "true"
 SEARCH_MIN_LENGTH = int(os.getenv("SEARCH_MIN_LENGTH", "2"))
+
+# Предустановленные варианты лимита устройств для HWID
+_device_limit_env = os.getenv("HWID_DEVICE_LIMIT_PRESETS", "1")
+HWID_DEVICE_LIMIT_PRESETS = _parse_int_list(_device_limit_env, [1], "HWID_DEVICE_LIMIT_PRESETS")
+logger.info("Device limit presets: %s", HWID_DEVICE_LIMIT_PRESETS)
