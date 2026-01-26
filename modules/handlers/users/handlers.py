@@ -1966,57 +1966,44 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user = matches[0]
             try:
                 message = format_user_details_safe(user)
-
-                keyboard = [
-                    [
-                        InlineKeyboardButton("🔄 Сбросить трафик", callback_data=f"reset_{user['uuid']}"),
-                        InlineKeyboardButton("📝 Редактировать", callback_data=f"edit_{user['uuid']}")
-                    ]
-                ]
-
-                if user.get('status') == 'ACTIVE':
-                    keyboard.append([
-                        InlineKeyboardButton("🔴 Отключить", callback_data=f"disable_{user['uuid']}"),
-                        InlineKeyboardButton("🔄 Отозвать подписку", callback_data=f"revoke_{user['uuid']}")
-                    ])
-                else:
-                    keyboard.append([
-                        InlineKeyboardButton("🟢 Включить", callback_data=f"enable_{user['uuid']}"),
-                        InlineKeyboardButton("🔄 Отозвать подписку", callback_data=f"revoke_{user['uuid']}")
-                    ])
-
-                keyboard.append([InlineKeyboardButton("🔙 Назад в меню", callback_data="back_to_users")])
-                reply_markup = InlineKeyboardMarkup(keyboard)
-
-                try:
-                    await update.message.reply_text(
-                        text=message,
-                        reply_markup=reply_markup,
-                        parse_mode="Markdown"
-                    )
-                except Exception as e:
-                    logger.error(f"Error sending formatted message with Markdown: {e}")
-                    await update.message.reply_text(
-                        text=message,
-                        reply_markup=reply_markup,
-                        parse_mode="Markdown"
-                    )
-
-                context.user_data["current_user"] = user
-                return SELECTING_USER
             except Exception as e:
                 logger.error(f"Error formatting user details in search: {e}")
-                keyboard = [[InlineKeyboardButton(f"👤 {user.get('username', 'Без имени')}", callback_data=f"view_{user.get('uuid')}")]]
-                keyboard.append([InlineKeyboardButton("🔙 Назад в меню", callback_data="back_to_users")])
-                reply_markup = InlineKeyboardMarkup(keyboard)
+                message = f"👤 Пользователь: {user.get('username','')}\n🆔 UUID: {user.get('uuid','')}\n📊 Статус: {user.get('status','')}"
 
+            is_superadmin = _is_superadmin_context(update, context)
+            is_admin = _is_admin_context(update, context)
+            can_manage_user = bool(is_admin or is_superadmin)
+            can_delete_user = bool(is_superadmin or (is_admin and not _is_user_active(user)))
+            user_uuid = user.get("uuid") or ""
+            if user_uuid:
+                reply_markup = SelectionHelper.create_user_info_keyboard(
+                    user_uuid,
+                    action_prefix="user_action",
+                    is_admin=can_manage_user,
+                    allow_delete=can_delete_user
+                )
+            else:
+                reply_markup = InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_users")]]
+                )
+
+            try:
                 await update.message.reply_text(
-                    text=f"Найден пользователь: {user.get('username','Без имени')}",
+                    text=message,
                     reply_markup=reply_markup,
                     parse_mode="Markdown"
                 )
-                context.user_data["current_user"] = user
-                return SELECTING_USER
+            except Exception as e:
+                logger.error(f"Error sending formatted message with Markdown: {e}")
+                await update.message.reply_text(
+                    text=message,
+                    reply_markup=reply_markup
+                )
+
+            context.user_data["current_user"] = user
+            context.user_data.pop("search_type", None)
+            context.user_data.pop("waiting_for", None)
+            return SELECTING_USER
 
         max_results = 10
         keyboard = []
