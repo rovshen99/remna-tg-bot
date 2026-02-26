@@ -216,6 +216,7 @@ class SelectionHelper:
         action_prefix: str = "user_action",
         is_admin: bool = False,
         allow_delete: bool = True,
+        back_callback_data: str = "back_to_users",
     ) -> InlineKeyboardMarkup:
         """Create keyboard with user actions"""
         rows = []
@@ -248,10 +249,10 @@ class SelectionHelper:
         if allow_delete and is_admin:
             rows.append([
                 InlineKeyboardButton("🗑️ Удалить", callback_data=f"{action_prefix}_delete_{user_uuid}"),
-                InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_users")
+                InlineKeyboardButton("🔙 Назад к списку", callback_data=back_callback_data)
             ])
         else:
-            rows.append([InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_users")])
+            rows.append([InlineKeyboardButton("🔙 Назад к списку", callback_data=back_callback_data)])
         return InlineKeyboardMarkup(rows)
 
     @staticmethod
