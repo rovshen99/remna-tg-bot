@@ -1021,6 +1021,7 @@ class DataValidators:
 @log_user_action("show_users_menu")
 async def show_users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show users menu"""
+    _clear_last_user_list_context(context)
     has_user_access = (
         context.user_data.get('is_admin', False)
         or context.user_data.get('is_superadmin', False)
@@ -1066,6 +1067,7 @@ async def handle_users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SELECTING_USER
 
     elif data == CallbackData.SEARCH_USER:
+        _clear_last_user_list_context(context)
         back_markup = KeyboardBuilder.create_back_button()
         search_prompt = (
             "🔍 Введите текст для поиска пользователя:\n\n"
@@ -1133,6 +1135,112 @@ async def search_users_by_term(term: str):
     return matches
 
 
+def _set_last_user_list_context(
+    context: ContextTypes.DEFAULT_TYPE,
+    source: str,
+    search_term: Optional[str] = None,
+) -> None:
+    """Remember which list screen opened the user card last."""
+    payload: Dict[str, Any] = {"source": source}
+    if search_term:
+        payload["search_term"] = search_term
+    context.user_data["last_user_list_context"] = payload
+
+
+def _clear_last_user_list_context(context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data.pop("last_user_list_context", None)
+
+
+def _get_user_details_back_callback(context: ContextTypes.DEFAULT_TYPE) -> str:
+    return CallbackData.BACK_TO_LIST if context.user_data.get("last_user_list_context") else CallbackData.BACK_TO_USERS
+
+
+def _build_search_results_message(term: str, matches: List[Dict[str, Any]]) -> tuple[str, InlineKeyboardMarkup]:
+    max_results = 10
+    keyboard = []
+    message_lines = [
+        f"🔍 Найдено {len(matches)} пользователей по запросу `{escape_markdown(term)}`:",
+        ""
+    ]
+
+    for index, user in enumerate(matches[:max_results], 1):
+        username = user.get('username') or 'Без имени'
+        status = user.get('status') or 'UNKNOWN'
+        message_lines.append(f"{index}. {escape_markdown(username)} — {escape_markdown(str(status))}")
+        user_uuid = user.get('uuid')
+        if user_uuid:
+            keyboard.append([InlineKeyboardButton(f"👤 {username}", callback_data=f"view_{user_uuid}")])
+
+    if len(matches) > max_results:
+        message_lines.append("")
+        message_lines.append(f"Показаны первые {max_results} результатов. Уточните запрос для более точного поиска.")
+
+    keyboard.append([InlineKeyboardButton("🔙 Назад в меню", callback_data="back_to_users")])
+    return "\n".join(message_lines), InlineKeyboardMarkup(keyboard)
+
+
+async def show_search_results_list(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    term: str,
+    matches: Optional[List[Dict[str, Any]]] = None,
+):
+    """Render saved search results so back navigation returns to the same search list."""
+    if matches is None:
+        matches = await search_users_by_term(term)
+
+    if not matches:
+        _clear_last_user_list_context(context)
+        back_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад в меню", callback_data="back_to_users")]])
+        text = f"❌ Пользователи по запросу `{escape_markdown(term)}` больше не найдены."
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text=text, reply_markup=back_markup, parse_mode="Markdown")
+        elif update.message:
+            await update.message.reply_text(text=text, reply_markup=back_markup, parse_mode="Markdown")
+        return SELECTING_USER
+
+    _set_last_user_list_context(context, source="search", search_term=term)
+    message_text, reply_markup = _build_search_results_message(term, matches)
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text=message_text,
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+    elif update.message:
+        await update.message.reply_text(
+            text=message_text,
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+    return SELECTING_USER
+
+
+async def show_last_user_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Return to the list screen that was used before opening a user."""
+    list_context = context.user_data.get("last_user_list_context") or {}
+    source = list_context.get("source")
+
+    if source == "search":
+        term = (list_context.get("search_term") or "").strip()
+        if term:
+            return await show_search_results_list(update, context, term)
+        _clear_last_user_list_context(context)
+        await show_users_menu(update, context)
+        return USER_MENU
+
+    if source == "expired":
+        return await list_expired_users(update, context)
+
+    if source == "all":
+        return await list_users(update, context)
+
+    await show_users_menu(update, context)
+    return USER_MENU
+
+
 async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List all users with improved selection interface"""
     await update.callback_query.edit_message_text("📋 Загрузка списка пользователей...")
@@ -1159,6 +1267,7 @@ async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Store users data for later use
         context.user_data["users_data"] = users_data
+        _set_last_user_list_context(context, source="all")
         
         message = f"👥 *Список пользователей* ({len(users_data)} шт.)\n\n"
         message += "Выберите пользователя для просмотра подробной информации:"
@@ -1207,6 +1316,7 @@ async def list_expired_users(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return USER_MENU
 
         context.user_data["users_data"] = users_data
+        _set_last_user_list_context(context, source="expired")
 
         message = f"⌛ *Просроченные пользователи* ({len(users_data)} шт.)\n\n"
         message += "Выберите пользователя для просмотра подробностей:"
@@ -1387,8 +1497,7 @@ async def handle_user_selection(update: Update, context: ContextTypes.DEFAULT_TY
         return USER_MENU
 
     elif data == "back_to_list":
-        await list_users(update, context)
-        return SELECTING_USER
+        return await show_last_user_list(update, context)
 
     elif data.startswith("view_"):
         uuid = data.split("_")[1]
@@ -1446,7 +1555,8 @@ async def show_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         uuid,
         action_prefix="user_action",
         is_admin=can_manage_user,
-        allow_delete=can_delete_user
+        allow_delete=can_delete_user,
+        back_callback_data=_get_user_details_back_callback(context),
     )
 
     # Если пришли из фото (QR), лучше отправить новое текстовое сообщение,
@@ -1735,8 +1845,7 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     # Legacy support for back navigation
     if data == "back_to_list":
-        await list_users(update, context)
-        return SELECTING_USER
+        return await show_last_user_list(update, context)
 
     elif data == "back_to_users":
         await show_users_menu(update, context)
@@ -1948,6 +2057,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         matches = await search_users_by_term(term)
 
         if not matches:
+            _clear_last_user_list_context(context)
             back_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="back_to_users")]])
             try:
                 await update.message.reply_text(
@@ -1963,6 +2073,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return USER_MENU
 
         if len(matches) == 1:
+            _clear_last_user_list_context(context)
             user = matches[0]
             try:
                 message = format_user_details_safe(user)
@@ -1980,7 +2091,8 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     user_uuid,
                     action_prefix="user_action",
                     is_admin=can_manage_user,
-                    allow_delete=can_delete_user
+                    allow_delete=can_delete_user,
+                    back_callback_data=_get_user_details_back_callback(context),
                 )
             else:
                 reply_markup = InlineKeyboardMarkup(
@@ -2004,45 +2116,9 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data.pop("search_type", None)
             context.user_data.pop("waiting_for", None)
             return SELECTING_USER
-
-        max_results = 10
-        keyboard = []
-        message_lines = [
-            f"🔍 Найдено {len(matches)} пользователей по запросу `{escape_markdown(term)}`:",
-            ""
-        ]
-
-        for index, user in enumerate(matches[:max_results], 1):
-            username = user.get('username') or 'Без имени'
-            status = user.get('status') or 'UNKNOWN'
-            message_lines.append(f"{index}. {escape_markdown(username)} — {escape_markdown(str(status))}")
-            user_uuid = user.get('uuid')
-            if user_uuid:
-                keyboard.append([InlineKeyboardButton(f"👤 {username}", callback_data=f"view_{user_uuid}")])
-
-        if len(matches) > max_results:
-            message_lines.append("")
-            message_lines.append(f"Показаны первые {max_results} результатов. Уточните запрос для более точного поиска.")
-
-        keyboard.append([InlineKeyboardButton("🔙 Назад в меню", callback_data="back_to_users")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        message_text = "\n".join(message_lines)
-
-        try:
-            await update.message.reply_text(
-                text=message_text,
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            logger.error(f"Error sending search results with Markdown: {e}")
-            plain_text = message_text.replace('`', '')
-            await update.message.reply_text(
-                text=plain_text,
-                reply_markup=reply_markup
-            )
-
-        return SELECTING_USER
+        context.user_data.pop("search_type", None)
+        context.user_data.pop("waiting_for", None)
+        return await show_search_results_list(update, context, term, matches=matches)
 
     else:  # Text input
         field = context.user_data["edit_field"]
