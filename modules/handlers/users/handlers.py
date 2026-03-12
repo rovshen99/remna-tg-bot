@@ -1454,6 +1454,11 @@ async def handle_user_selection(update: Update, context: ContextTypes.DEFAULT_TY
     # Handle pagination from SelectionHelper
     elif data.startswith("users_page_"):
         page = int(data.split("_")[2])
+        list_context = context.user_data.get("last_user_list_context") or {}
+        source = list_context.get("source")
+        status_filter = "EXPIRED" if source == "expired" else None
+        list_title = "⌛ *Просроченные пользователи*" if source == "expired" else "👥 *Список пользователей*"
+
         try:
             keyboard, users_data = await SelectionHelper.get_users_selection_keyboard(
                 callback_prefix="select_user",
@@ -1461,12 +1466,13 @@ async def handle_user_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 max_per_row=1,
                 page=page,
                 filter_tag_by_telegram_id=str(update.effective_user.id),
-                is_superadmin=context.user_data.get('is_superadmin', False)
+                is_superadmin=context.user_data.get('is_superadmin', False),
+                status_filter=status_filter,
             )
             
             context.user_data["users_data"] = users_data
             
-            message = f"👥 *Список пользователей* ({len(users_data)} шт.) - страница {page + 1}\n\n"
+            message = f"{list_title} ({len(users_data)} шт.) - страница {page + 1}\n\n"
             message += "Выберите пользователя для просмотра подробной информации:"
 
             await query.edit_message_text(
