@@ -21,7 +21,7 @@ from modules.config import (
 )
 from modules.utils.auth import check_authorization
 
-from modules.handlers.core.start import start
+from modules.handlers.core.start import start, show_main_menu
 from modules.handlers.core.menu import handle_menu_selection
 from modules.handlers.users import (
     handle_users_menu, handle_user_selection, handle_user_action,
@@ -41,6 +41,7 @@ from modules.handlers.hosts import (
 from modules.handlers.inbounds import handle_inbounds_menu
 from modules.handlers.bulk import handle_bulk_menu, handle_bulk_confirm
 from modules.handlers.admins import show_admins_menu, handle_admins_menu, handle_admin_input
+from modules.handlers.core.language import LANGUAGE_MENU_CALLBACK, LANGUAGE_SELECT_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +64,198 @@ async def unauthorized_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     # Если пользователь авторизован, но попал в fallback, перенаправляем на главное меню
     return await start(update, context)
 
+
+async def handle_callback_reentry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Allow stale inline buttons to re-enter the conversation after bot restart."""
+    query = update.callback_query
+    if not query:
+        return ConversationHandler.END
+
+    if not check_authorization(update.effective_user):
+        await query.answer("⛔ Вы не авторизованы для использования этого бота.", show_alert=True)
+        return ConversationHandler.END
+
+    data = query.data or ""
+
+    main_menu_callbacks = {
+        "users",
+        "menu_users",
+        "nodes",
+        "menu_nodes",
+        "stats",
+        "menu_stats",
+        "hosts",
+        "menu_hosts",
+        "admins",
+        "menu_admins",
+        "bulk",
+        "menu_bulk",
+        "inbounds",
+        "menu_inbounds",
+        "create_user",
+        "menu_create_user",
+        "notify_expiring_self",
+        "export_subscriptions",
+        "confirm_export_subscriptions",
+        "cancel_export_subscriptions",
+        "back_to_main",
+        LANGUAGE_MENU_CALLBACK,
+    }
+    user_menu_callbacks = {
+        "list_users",
+        "list_expired_users",
+        "search_user",
+        "back_to_users",
+    }
+    user_selection_callbacks = {
+        "back",
+        "page_info",
+        "prev_page",
+        "next_page",
+        "back_to_list",
+    }
+    user_action_prefixes = (
+        "user_action_",
+        "edit_",
+        "disable_",
+        "enable_",
+        "reset_",
+        "revoke_",
+        "delete_",
+        "hwid_",
+        "stats_",
+        "confirm_del_hwid_",
+    )
+    user_selection_prefixes = (
+        "select_user_",
+        "users_page_",
+        "view_",
+        "add_hwid_",
+        "show_qr_",
+        "refresh_qr_",
+        "show_sub_",
+        "view_hwid_",
+        "delete_hwid_",
+        "confirm_delete_hwid_",
+        "cancel_delete_hwid_",
+        "back_to_hwid_",
+        "show_traffic_history_",
+        "show_online_stats_",
+        "show_links_",
+        "show_user_",
+    )
+    node_callbacks = {
+        "list_nodes",
+        "add_node",
+        "get_panel_certificate",
+        "restart_all_nodes",
+        "confirm_restart_all",
+        "nodes_usage",
+        "back_to_nodes",
+    }
+    node_prefixes = (
+        "view_node_",
+        "select_node_",
+        "page_nodes_",
+        "enable_node_",
+        "disable_node_",
+        "restart_node_",
+        "node_stats_",
+        "edit_node_",
+    )
+    stats_callbacks = {
+        "system_stats",
+        "bandwidth_stats",
+        "nodes_stats",
+        "back_to_stats",
+    }
+    host_callbacks = {
+        "list_hosts",
+        "create_host",
+        "back_to_hosts",
+    }
+    host_prefixes = (
+        "view_host_",
+        "enable_host_",
+        "disable_host_",
+        "edit_host_",
+        "delete_host_",
+        "confirm_delete_host_",
+    )
+    inbound_callbacks = {
+        "list_inbounds",
+        "list_full_inbounds",
+        "list_inbounds_stats",
+        "filter_inbounds",
+        "refresh_inbounds",
+        "debug_users",
+        "back_to_inbounds",
+    }
+    inbound_prefixes = (
+        "view_inbound_",
+        "select_inbound_",
+        "select_full_inbound_",
+        "inbound_action_",
+        "page_inbounds_",
+        "page_full_inbounds_",
+    )
+    bulk_callbacks = {
+        "bulk_reset_all_traffic",
+        "bulk_delete_inactive",
+        "bulk_delete_expired",
+        "bulk_update_all",
+        "bulk_notify_expiring",
+        "back_to_bulk",
+    }
+    bulk_confirm_callbacks = {
+        "confirm_reset_all_traffic",
+        "confirm_delete_inactive",
+        "confirm_delete_expired",
+    }
+
+    if data.startswith("expire_extend_") or data.startswith(LANGUAGE_SELECT_PREFIX) or data in main_menu_callbacks:
+        return await handle_menu_selection(update, context)
+
+    if data in user_menu_callbacks:
+        return await handle_users_menu(update, context)
+
+    if data.startswith(user_action_prefixes):
+        return await handle_user_action(update, context)
+
+    if data in user_selection_callbacks or data.startswith(user_selection_prefixes):
+        return await handle_user_selection(update, context)
+
+    if data in node_callbacks or data.startswith(node_prefixes):
+        return await handle_nodes_menu(update, context)
+
+    if data in stats_callbacks:
+        return await handle_stats_menu(update, context)
+
+    if data in host_callbacks or data.startswith(host_prefixes):
+        return await handle_hosts_menu(update, context)
+
+    if data in inbound_callbacks or data.startswith(inbound_prefixes):
+        return await handle_inbounds_menu(update, context)
+
+    if data in bulk_callbacks:
+        return await handle_bulk_menu(update, context)
+
+    if data in bulk_confirm_callbacks:
+        return await handle_bulk_confirm(update, context)
+
+    if data.startswith("admin_"):
+        return await handle_admins_menu(update, context)
+
+    logger.info("Unhandled stale callback after restart: %s", data)
+    return await show_main_menu(update, context)
+
 def create_conversation_handler():
     """Create the main conversation handler"""
     return ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[
+            CommandHandler("start", start),
+            CallbackQueryHandler(handle_callback_reentry),
+        ],
         states={
             MAIN_MENU: [
                 CallbackQueryHandler(handle_menu_selection, pattern="^expire_extend_"),
