@@ -21,6 +21,31 @@ from modules.utils.google_drive import store_subscription_links
 logger = logging.getLogger(__name__)
 
 
+def _format_device_presets(presets) -> str:
+    if not presets:
+        return "по умолчанию"
+    return ", ".join(str(value) for value in presets)
+
+
+def _parse_device_presets_input(raw_value: str):
+    tokens = [chunk.strip() for chunk in raw_value.split(",") if chunk.strip()]
+    if not tokens:
+        return None
+
+    result = []
+    seen = set()
+    for token in tokens:
+        if not token.isdigit():
+            return None
+        value = int(token)
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+
+    return result or None
+
+
 def _format_admin_label(admin: dict) -> str:
     name = admin.get("display_name") or "Без имени"
     status = "🟢" if admin.get("is_active") else "🔴"
@@ -108,7 +133,6 @@ def _build_admins_keyboard() -> InlineKeyboardMarkup:
 
     if admins:
         for admin in admins:
-            label = _format_admin_label(admin)
             name_or_id = admin.get('display_name') or str(admin['user_id'])
             toggle_text = "🚫 Выкл" if admin.get("is_active") else "✅ Вкл"
             keyboard.append(
@@ -116,6 +140,10 @@ def _build_admins_keyboard() -> InlineKeyboardMarkup:
                     InlineKeyboardButton(
                         f"{toggle_text} {name_or_id}",
                         callback_data=f"admin_toggle_{admin['user_id']}",
+                    ),
+                    InlineKeyboardButton(
+                        "📱 Лимиты",
+                        callback_data=f"admin_limits_{admin['user_id']}",
                     ),
                     InlineKeyboardButton(
                         f"🗑️ {name_or_id}",
@@ -153,6 +181,7 @@ async def show_admins_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 total_device_counts[k] += v
 
             message += f"• {_format_admin_label(admin)}\n"
+            message += f"  📋 Лимиты создания: {_format_device_presets(admin.get('device_limit_presets_list'))}\n"
             message += _format_category(user_counts, "👥", "Пользователи") + "\n"
             message += _format_category(device_counts, "📱", "Устройства") + "\n"
 
@@ -181,6 +210,7 @@ async def show_admins_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     context.user_data.pop("awaiting_admin_input", None)
+    context.user_data.pop("awaiting_admin_device_presets_for", None)
     return ADMIN_MENU_STATE
 
 
@@ -232,14 +262,35 @@ async def handle_admins_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if data == "admin_cancel_add":
         context.user_data.pop("awaiting_admin_input", None)
+        context.user_data.pop("awaiting_admin_device_presets_for", None)
         return await show_admins_menu(update, context)
 
     if data == "admin_cancel_remove":
         context.user_data.pop("remove_admin_id", None)
+        context.user_data.pop("awaiting_admin_device_presets_for", None)
         return await show_admins_menu(update, context)
 
     if data == "admin_cancel_export":
+        context.user_data.pop("awaiting_admin_device_presets_for", None)
         return await show_admins_menu(update, context)
+
+    if data.startswith("admin_limits_"):
+        user_id = int(data.split("_")[2])
+        admin = admin_store.get_admin(user_id)
+        if not admin:
+            await query.edit_message_text("❌ Диллер не найден.")
+            return await show_admins_menu(update, context)
+        context.user_data["awaiting_admin_device_presets_for"] = user_id
+        message = (
+            "📱 *Настройка лимитов устройств для диллера*\n\n"
+            f"ID: `{user_id}`\n"
+            f"Текущие значения: `{_format_device_presets(admin.get('device_limit_presets_list'))}`\n\n"
+            "Отправьте значения через запятую, например: `1,2,3`\n"
+            "Допустимы только целые числа >= 0."
+        )
+        back_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="admin_cancel_add")]])
+        await query.edit_message_text(message, parse_mode="Markdown", reply_markup=back_markup)
+        return ADMIN_WAITING_INPUT
 
     if data == "admin_confirm_export":
         return await _export_subscriptions(update, context, return_to_admin=True)
@@ -280,6 +331,28 @@ async def handle_admins_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 @check_superadmin
 async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text input while adding admin"""
+    awaiting_presets_for = context.user_data.get("awaiting_admin_device_presets_for")
+    if awaiting_presets_for:
+        text = (update.message.text or "").strip()
+        presets = _parse_device_presets_input(text)
+        if not presets:
+            await update.message.reply_text(
+                "⚠️ Неверный формат. Отправьте числа >= 0 через запятую, например: `1,2,3`.",
+                parse_mode="Markdown",
+            )
+            return ADMIN_WAITING_INPUT
+        updated = admin_store.set_admin_device_limit_presets(awaiting_presets_for, presets)
+        if not updated:
+            await update.message.reply_text("❌ Диллер не найден.")
+            context.user_data.pop("awaiting_admin_device_presets_for", None)
+            return await show_admins_menu(update, context)
+        await update.message.reply_text(
+            f"✅ Для диллера `{awaiting_presets_for}` установлены лимиты: `{_format_device_presets(presets)}`",
+            parse_mode="Markdown",
+        )
+        context.user_data.pop("awaiting_admin_device_presets_for", None)
+        return await show_admins_menu(update, context)
+
     if not context.user_data.get("awaiting_admin_input"):
         return ADMIN_MENU_STATE
 

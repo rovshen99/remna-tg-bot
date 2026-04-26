@@ -28,7 +28,8 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS admins (
             user_id INTEGER PRIMARY KEY,
             display_name TEXT,
-            is_active INTEGER NOT NULL DEFAULT 1
+            is_active INTEGER NOT NULL DEFAULT 1,
+            device_limit_presets TEXT
         )
         """
     )
@@ -36,6 +37,8 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(admins)").fetchall()}
     if "is_active" not in columns:
         conn.execute("ALTER TABLE admins ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+    if "device_limit_presets" not in columns:
+        conn.execute("ALTER TABLE admins ADD COLUMN device_limit_presets TEXT")
     conn.commit()
 
 
@@ -56,12 +59,52 @@ def list_admins() -> List[Dict]:
                 SELECT
                     user_id,
                     COALESCE(display_name, '') AS display_name,
-                    is_active
+                    is_active,
+                    device_limit_presets
                 FROM admins
                 ORDER BY is_active DESC, display_name COLLATE NOCASE
                 """
             ).fetchall()
-            return [dict(row) for row in rows]
+            admins = [dict(row) for row in rows]
+            for admin in admins:
+                admin["device_limit_presets_list"] = _parse_device_limit_presets(admin.get("device_limit_presets"))
+            return admins
+
+
+def _parse_device_limit_presets(raw_value: Optional[str]) -> Optional[List[int]]:
+    value = (raw_value or "").strip()
+    if not value:
+        return None
+
+    result: List[int] = []
+    seen = set()
+    for part in value.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        try:
+            preset = int(token)
+        except ValueError:
+            continue
+        if preset < 0 or preset in seen:
+            continue
+        seen.add(preset)
+        result.append(preset)
+
+    return result or None
+
+
+def _serialize_device_limit_presets(presets: List[int]) -> str:
+    seen = set()
+    normalized: List[int] = []
+    for preset in presets:
+        if preset < 0 or preset in seen:
+            continue
+        seen.add(preset)
+        normalized.append(preset)
+    if not normalized:
+        raise ValueError("Device presets must contain at least one non-negative integer")
+    return ",".join(str(value) for value in normalized)
 
 
 def is_admin(user_id: int) -> bool:
@@ -110,6 +153,52 @@ def set_admin_active(user_id: int, active: bool) -> None:
                 (1 if active else 0, user_id),
             )
             conn.commit()
+
+
+def get_admin(user_id: int) -> Optional[Dict]:
+    user_id = int(user_id)
+    with _lock:
+        with _get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    user_id,
+                    COALESCE(display_name, '') AS display_name,
+                    is_active,
+                    device_limit_presets
+                FROM admins
+                WHERE user_id=?
+                """,
+                (user_id,),
+            ).fetchone()
+            if not row:
+                return None
+            admin = dict(row)
+            admin["device_limit_presets_list"] = _parse_device_limit_presets(admin.get("device_limit_presets"))
+            return admin
+
+
+def get_admin_device_limit_presets(user_id: int) -> Optional[List[int]]:
+    admin = get_admin(user_id)
+    if not admin:
+        return None
+    return admin.get("device_limit_presets_list")
+
+
+def set_admin_device_limit_presets(user_id: int, presets: List[int]) -> bool:
+    user_id = int(user_id)
+    serialized = _serialize_device_limit_presets(presets)
+    with _lock:
+        with _get_connection() as conn:
+            cur = conn.execute(
+                "UPDATE admins SET device_limit_presets=? WHERE user_id=?",
+                (serialized, user_id),
+            )
+            conn.commit()
+            updated = cur.rowcount > 0
+            if updated:
+                logger.info("Updated device presets for admin %s: %s", user_id, serialized)
+            return updated
 
 
 def remove_admin(user_id: int) -> bool:
