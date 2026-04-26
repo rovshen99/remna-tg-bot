@@ -133,6 +133,7 @@ from modules.utils.formatters import (
 )
 from modules.utils.selection_helpers import SelectionHelper
 from modules.utils.google_drive import store_subscription_links, delete_drive_file
+from modules.utils import admin_store
 from modules.utils.auth import (
     check_admin,
     check_authorization,
@@ -176,6 +177,25 @@ def _build_device_limit_keyboard(prefix: str, options: List[int], per_row: int =
         ]
         keyboard.append(row)
     return keyboard
+
+
+def _get_effective_device_limit_presets(update: Update, include_unlimited_for_superadmin: bool = False) -> List[int]:
+    user = update.effective_user
+    if not user:
+        return list(HWID_DEVICE_LIMIT_PRESETS)
+
+    if is_super_admin_user(user.id):
+        presets = list(HWID_DEVICE_LIMIT_PRESETS)
+        if include_unlimited_for_superadmin:
+            presets = sorted(set(presets + [0]))
+        return presets
+
+    if is_admin_user(user.id):
+        dealer_presets = admin_store.get_admin_device_limit_presets(user.id)
+        if dealer_presets:
+            return list(dealer_presets)
+
+    return list(HWID_DEVICE_LIMIT_PRESETS)
 
 
 async def _delete_message_safe(bot, chat_id, message_id):
@@ -2630,9 +2650,7 @@ async def ask_for_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             message += " Ввод произвольного значения недоступен."
 
-        presets = list(HWID_DEVICE_LIMIT_PRESETS)
-        if user_is_super_admin:
-            presets = sorted(set(presets + [0]))
+        presets = _get_effective_device_limit_presets(update, include_unlimited_for_superadmin=True)
 
         if presets:
             readable_presets = ", ".join(_format_device_limit_label(limit) for limit in presets)
@@ -3152,16 +3170,34 @@ async def handle_create_user_input(update: Update, context: ContextTypes.DEFAULT
                     update.effective_user and is_super_admin_user(update.effective_user.id)
                 )
                 if not user_is_super_admin:
-                    await update.message.reply_text(
-                        "❌ Ввод произвольного лимита устройств доступен только суперадмину. Используйте кнопки ниже.",
-                        parse_mode="Markdown"
-                    )
-                    return CREATE_USER_FIELD
+                    allowed = set(_get_effective_device_limit_presets(update))
+                    try:
+                        parsed_value = int(value)
+                    except ValueError:
+                        await update.message.reply_text(
+                            "❌ Неверный формат числа. Введите целое число >= 0.",
+                            parse_mode="Markdown"
+                        )
+                        return CREATE_USER_FIELD
+                    if parsed_value not in allowed:
+                        await update.message.reply_text(
+                            "❌ Это значение недоступно для вашего профиля. Используйте кнопки ниже.",
+                            parse_mode="Markdown"
+                        )
+                        return CREATE_USER_FIELD
+                    value = parsed_value
+                else:
+                    try:
+                        value = int(value)
+                        if value < 0:
+                            raise ValueError("Device limit cannot be negative")
+                    except ValueError:
+                        await update.message.reply_text(
+                            "❌ Неверный формат числа. Введите целое число >= 0.",
+                            parse_mode="Markdown"
+                        )
+                        return CREATE_USER_FIELD
                 try:
-                    value = int(value)
-                    if value < 0:
-                        raise ValueError("Device limit cannot be negative")
-                    
                     # Если установлен лимит устройств > 0, нужно также установить trafficLimitStrategy = NO_RESET
                     if value > 0:
                         # Явно устанавливаем стратегию NO_RESET
@@ -3253,7 +3289,8 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     # Set default device limit if not provided
     if "hwidDeviceLimit" not in user_data:
-        user_data["hwidDeviceLimit"] = HWID_DEVICE_LIMIT_PRESETS[0]
+        effective_presets = _get_effective_device_limit_presets(update)
+        user_data["hwidDeviceLimit"] = effective_presets[0] if effective_presets else HWID_DEVICE_LIMIT_PRESETS[0]
     
     # Set default description if not provided
     if "description" not in user_data or not user_data["description"]:
@@ -4044,9 +4081,7 @@ async def handle_edit_field_selection(update: Update, context: ContextTypes.DEFA
             ])
         elif field == "hwidDeviceLimit":
             message += "\nВведите лимит устройств (целое число). `0` — без ограничений."
-            presets = list(HWID_DEVICE_LIMIT_PRESETS)
-            if user_is_super_admin:
-                presets = sorted(set(presets + [0]))
+            presets = _get_effective_device_limit_presets(update, include_unlimited_for_superadmin=True)
             if presets:
                 readable_presets = ", ".join(_format_device_limit_label(limit) for limit in presets)
                 message += f"\nИли выберите готовое значение ниже: {readable_presets}."
@@ -4208,6 +4243,12 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
                     return EDIT_VALUE
                 if devices < 0:
                     return EDIT_VALUE
+                user_is_super_admin = bool(update.effective_user and is_super_admin_user(update.effective_user.id))
+                if not user_is_super_admin:
+                    allowed = set(_get_effective_device_limit_presets(update))
+                    if devices not in allowed:
+                        await query.answer("Это значение недоступно для вашего профиля.", show_alert=True)
+                        return EDIT_VALUE
                 update_data = {"hwidDeviceLimit": devices}
                 if devices > 0:
                     update_data["trafficLimitStrategy"] = "NO_RESET"
@@ -4311,6 +4352,14 @@ async def handle_edit_field_value(update: Update, context: ContextTypes.DEFAULT_
             value = int(value)
             if value < 0:
                 raise ValueError("Device limit cannot be negative")
+            user_is_super_admin = bool(update.effective_user and is_super_admin_user(update.effective_user.id))
+            if not user_is_super_admin:
+                allowed = set(_get_effective_device_limit_presets(update))
+                if value not in allowed:
+                    text = "❌ Это значение недоступно для вашего профиля. Используйте пресеты из меню."
+                    if not await _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
+                        await update.message.reply_text(text, reply_markup=keyboard_error, parse_mode="Markdown")
+                    return EDIT_USER
         except ValueError:
             text = "❌ Неверный формат числа. Введите целое число >= 0."
             if not await _edit_cached_message(context, text, reply_markup=keyboard_error, parse_mode="Markdown"):
