@@ -158,20 +158,27 @@ def main():
     # Schedule daily expiration notifications
     schedule_expiration_notifications(application)
     
+    import signal
+    import time
+
+    _shutdown = False
+
+    def _handle_sigterm(signum, frame):
+        nonlocal _shutdown
+        _shutdown = True
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
     # Run polling with retry logic
     max_retries = 10
     retry_count = 0
-    
+
     while retry_count < max_retries:
+        if _shutdown:
+            logger.info("Shutdown requested, exiting.")
+            break
         try:
             logger.info(f"Starting bot polling (attempt {retry_count + 1}/{max_retries})")
-            logger.info("Bot configuration:")
-            logger.info(f"  - Poll interval: 0.5s")
-            logger.info(f"  - Timeout: 30s")
-            logger.info(f"  - Bootstrap retries: 5")
-            logger.info(f"  - Drop pending updates: True")
-            
-            # Run polling - production configuration
             application.run_polling(
                 poll_interval=0.5,
                 timeout=30,
@@ -182,22 +189,33 @@ def main():
                 pool_timeout=30,
                 drop_pending_updates=True
             )
-            logger.info("Bot polling started successfully")
-            break  # If successful, exit the retry loop
+            # run_polling() exits cleanly on SIGTERM — no retry needed
+            break
+        except (KeyboardInterrupt, SystemExit):
+            logger.info("Received shutdown signal, stopping.")
+            break
+        except RuntimeError as e:
+            if "event loop is closed" in str(e).lower():
+                logger.info("Event loop closed during shutdown, stopping.")
+                break
+            retry_count += 1
+            logger.error(f"RuntimeError during polling (attempt {retry_count}/{max_retries}): {e}")
         except Exception as e:
             retry_count += 1
             logger.error(f"Error during polling (attempt {retry_count}/{max_retries}): {e}")
             logger.error(f"Exception type: {type(e).__name__}")
-            
+
             if retry_count >= max_retries:
                 logger.error(f"Max retries reached. Bot failed to start after {max_retries} attempts.")
                 raise
-            
-            # Wait before retrying
-            import time
-            wait_time = min(30 * retry_count, 300)  # Exponential backoff, max 5 minutes
+
+            wait_time = min(30 * retry_count, 300)
             logger.info(f"Waiting {wait_time} seconds before retry...")
-            time.sleep(wait_time)
+            try:
+                time.sleep(wait_time)
+            except (KeyboardInterrupt, SystemExit):
+                logger.info("Interrupted during wait, stopping.")
+                break
 
 if __name__ == '__main__':
     try:
