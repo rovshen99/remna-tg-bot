@@ -89,7 +89,8 @@ class CallbackData:
     CONFIRM_DEL_HWID = "confirm_del_hwid_"
     
     # Экспорт
-    EXPORT_USERS_EXCEL = "export_users_excel"
+    EXPORT_SUPERADMIN_EXCEL = "export_superadmin_excel"
+    EXPORT_DEALERS_EXCEL = "export_dealers_excel"
 
     # Пагинация
     PREV_PAGE = "prev_page"
@@ -779,7 +780,8 @@ class KeyboardBuilder:
         if is_admin:
             rows.append([InlineKeyboardButton("➕ Создать пользователя", callback_data=CallbackData.CREATE_USER)])
             if excel_enabled:
-                rows.append([InlineKeyboardButton("📥 Скачать Excel", callback_data=CallbackData.EXPORT_USERS_EXCEL)])
+                rows.append([InlineKeyboardButton("📥 Excel: мои клиенты", callback_data=CallbackData.EXPORT_SUPERADMIN_EXCEL)])
+                rows.append([InlineKeyboardButton("📥 Excel: клиенты дилеров", callback_data=CallbackData.EXPORT_DEALERS_EXCEL)])
         rows.append([InlineKeyboardButton("🔙 Назад в главное меню", callback_data=CallbackData.BACK_TO_MAIN)])
         return InlineKeyboardMarkup(rows)
     
@@ -1109,8 +1111,12 @@ async def handle_users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["search_type"] = "generic"
         return WAITING_FOR_INPUT
         
-    elif data == CallbackData.EXPORT_USERS_EXCEL:
-        await export_users_excel(update, context)
+    elif data == CallbackData.EXPORT_SUPERADMIN_EXCEL:
+        await export_users_excel(update, context, mode="superadmin")
+        return USER_MENU
+
+    elif data == CallbackData.EXPORT_DEALERS_EXCEL:
+        await export_users_excel(update, context, mode="dealers")
         return USER_MENU
 
     elif data in (CallbackData.CREATE_USER, "menu_create_user"):
@@ -1371,8 +1377,9 @@ async def list_expired_users(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return USER_MENU
 
-async def export_users_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Export all users to an Excel file and send it"""
+async def export_users_excel(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: str = "superadmin"):
+    """Export users to Excel. mode='superadmin' — users without a dealer tag;
+    mode='dealers' — users created by dealers, grouped by dealer name."""
     from modules.utils import admin_store
 
     query = update.callback_query
@@ -1383,33 +1390,51 @@ async def export_users_excel(update: Update, context: ContextTypes.DEFAULT_TYPE)
         from openpyxl import Workbook
 
         users_response = await UserAPI.get_all_users()
-        users = []
+        all_users = []
         if isinstance(users_response, dict) and "users" in users_response:
-            users = users_response["users"]
+            all_users = users_response["users"]
         elif isinstance(users_response, list):
-            users = users_response
+            all_users = users_response
 
-        # Build tag → dealer name map from admin store
-        # User's "tag" field stores the Telegram ID of the dealer who created them
+        # Build tag → dealer name map (tag = dealer's Telegram ID)
         admins = admin_store.list_admins()
+        dealer_tags = {str(a["user_id"]) for a in admins}
         dealer_map = {
             str(a["user_id"]): a.get("display_name") or str(a["user_id"])
             for a in admins
         }
 
+        if mode == "superadmin":
+            users = [u for u in all_users if str(u.get("tag") or "") not in dealer_tags]
+            filename = "superadmin_clients.xlsx"
+            sheet_title = "Мои клиенты"
+            caption_label = "мои клиенты"
+        else:
+            users = [u for u in all_users if str(u.get("tag") or "") in dealer_tags]
+            filename = "dealer_clients.xlsx"
+            sheet_title = "Клиенты дилеров"
+            caption_label = "клиенты дилеров"
+
         wb = Workbook()
         ws = wb.active
-        ws.title = "Пользователи"
+        ws.title = sheet_title
         ws.append(["Пользователи", "Дата оплаты", "Дилер"])
 
         for user in users:
             username = user.get("username") or user.get("email") or str(user.get("uuid", ""))
             tag = str(user.get("tag") or "")
             dealer = dealer_map.get(tag, "")
-            ws.append([username, "", dealer])
+
+            expire_raw = user.get("expireAt") or ""
+            try:
+                expire_date = datetime.fromisoformat(expire_raw.replace("Z", "+00:00")).strftime("%d.%m.%Y")
+            except Exception:
+                expire_date = expire_raw[:10] if expire_raw else ""
+
+            ws.append([username, expire_date, dealer])
 
         ws.column_dimensions["A"].width = 40
-        ws.column_dimensions["B"].width = 20
+        ws.column_dimensions["B"].width = 15
         ws.column_dimensions["C"].width = 30
 
         output = BytesIO()
@@ -1424,8 +1449,8 @@ async def export_users_excel(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         await update.effective_chat.send_document(
             document=output,
-            filename="users.xlsx",
-            caption=f"👥 Список пользователей — {len(users)} шт."
+            filename=filename,
+            caption=f"👥 {caption_label.capitalize()} — {len(users)} шт."
         )
 
     except Exception as e:
