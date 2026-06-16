@@ -1441,25 +1441,31 @@ async def export_users_excel(update: Update, context: ContextTypes.DEFAULT_TYPE,
         wb.save(output)
         output.seek(0)
 
+        await update.effective_chat.send_document(
+            document=output,
+            filename=filename,
+            caption=f"👥 {caption_label.capitalize()} — {len(users)} шт.",
+            write_timeout=120,
+            read_timeout=120,
+            connect_timeout=30,
+        )
         back_markup = KeyboardBuilder.create_back_button(CallbackData.BACK_TO_USERS)
         await query.edit_message_text(
             f"✅ Экспортировано *{len(users)}* пользователей.",
             reply_markup=back_markup,
             parse_mode="Markdown"
         )
-        await update.effective_chat.send_document(
-            document=output,
-            filename=filename,
-            caption=f"👥 {caption_label.capitalize()} — {len(users)} шт."
-        )
 
     except Exception as e:
         logger.error(f"Error in export_users_excel: {e}")
         back_markup = KeyboardBuilder.create_back_button(CallbackData.BACK_TO_USERS)
-        await query.edit_message_text(
-            f"❌ Ошибка при создании Excel файла: {str(e)}",
-            reply_markup=back_markup
-        )
+        try:
+            await query.edit_message_text(
+                f"❌ Ошибка при создании Excel файла: {str(e)}",
+                reply_markup=back_markup
+            )
+        except Exception:
+            pass
 
 async def send_users_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a page of users"""
