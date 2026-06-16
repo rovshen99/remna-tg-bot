@@ -59,6 +59,7 @@ API_TOKEN = os.getenv("REMNAWAVE_API_TOKEN")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 MAIN_MENU_TITLE = os.getenv("MAIN_MENU_TITLE", "Remnawave Admin")
 INBOUNDS_MENU_ENABLED = os.getenv("INBOUNDS_MENU_ENABLED", "false").lower() == "true"
+EXPORT_EXCEL_ENABLED = os.getenv("EXPORT_EXCEL_ENABLED", "false").lower() == "true"
 
 super_admin_ids_str = os.getenv("SUPER_ADMIN_USER_IDS") or os.getenv("SUPERADMIN_USER_IDS", "")
 logger.info(f"Raw SUPER_ADMIN_USER_IDS from env: '{super_admin_ids_str}'")

@@ -31,6 +31,7 @@ from modules.config import (
     SUBSCRIPTION_DRIVE_LINK,
     SUBSCRIPTION_SCRIPT_URL,
     HWID_DEVICE_LIMIT_PRESETS,
+    EXPORT_EXCEL_ENABLED,
 )
 from modules.services.expiration_notifier import extend_user_subscription_and_reset
 
@@ -87,6 +88,9 @@ class CallbackData:
     DEL_HWID = "del_hwid_"
     CONFIRM_DEL_HWID = "confirm_del_hwid_"
     
+    # Экспорт
+    EXPORT_USERS_EXCEL = "export_users_excel"
+
     # Пагинация
     PREV_PAGE = "prev_page"
     NEXT_PAGE = "next_page"
@@ -765,7 +769,7 @@ class KeyboardBuilder:
     """Класс для создания клавиатур"""
     
     @staticmethod
-    def create_main_menu(is_admin: bool):
+    def create_main_menu(is_admin: bool, excel_enabled: bool = False):
         """Создает главное меню пользователей"""
         rows = [
             [InlineKeyboardButton("📋 Список всех пользователей", callback_data=CallbackData.LIST_USERS)],
@@ -774,6 +778,8 @@ class KeyboardBuilder:
         ]
         if is_admin:
             rows.append([InlineKeyboardButton("➕ Создать пользователя", callback_data=CallbackData.CREATE_USER)])
+            if excel_enabled:
+                rows.append([InlineKeyboardButton("📥 Скачать Excel", callback_data=CallbackData.EXPORT_USERS_EXCEL)])
         rows.append([InlineKeyboardButton("🔙 Назад в главное меню", callback_data=CallbackData.BACK_TO_MAIN)])
         return InlineKeyboardMarkup(rows)
     
@@ -1046,7 +1052,8 @@ async def show_users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.get('is_admin', False)
         or context.user_data.get('is_superadmin', False)
     )
-    reply_markup = KeyboardBuilder.create_main_menu(has_user_access)
+    is_superadmin = context.user_data.get('is_superadmin', False)
+    reply_markup = KeyboardBuilder.create_main_menu(has_user_access, excel_enabled=EXPORT_EXCEL_ENABLED and is_superadmin)
 
     message = (
         "👥 *Управление пользователями*\n\n"
@@ -1102,6 +1109,10 @@ async def handle_users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["search_type"] = "generic"
         return WAITING_FOR_INPUT
         
+    elif data == CallbackData.EXPORT_USERS_EXCEL:
+        await export_users_excel(update, context)
+        return USER_MENU
+
     elif data in (CallbackData.CREATE_USER, "menu_create_user"):
         await start_create_user(update, context)
         return CREATE_USER_FIELD
@@ -1360,24 +1371,70 @@ async def list_expired_users(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return USER_MENU
 
-    if not users or not users.get("users"):
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_users")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.callback_query.edit_message_text(
-            "❌ Пользователи не найдены или ошибка при получении списка.",
-            reply_markup=reply_markup
+async def export_users_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Export all users to an Excel file and send it"""
+    from modules.utils import admin_store
+
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("📥 Формирую Excel файл, подождите...")
+
+    try:
+        from openpyxl import Workbook
+
+        users_response = await UserAPI.get_all_users()
+        users = []
+        if isinstance(users_response, dict) and "users" in users_response:
+            users = users_response["users"]
+        elif isinstance(users_response, list):
+            users = users_response
+
+        # Build tag → dealer name map from admin store
+        # User's "tag" field stores the Telegram ID of the dealer who created them
+        admins = admin_store.list_admins()
+        dealer_map = {
+            str(a["user_id"]): a.get("display_name") or str(a["user_id"])
+            for a in admins
+        }
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Пользователи"
+        ws.append(["Пользователи", "Дата оплаты", "Дилер"])
+
+        for user in users:
+            username = user.get("username") or user.get("email") or str(user.get("uuid", ""))
+            tag = str(user.get("tag") or "")
+            dealer = dealer_map.get(tag, "")
+            ws.append([username, "", dealer])
+
+        ws.column_dimensions["A"].width = 40
+        ws.column_dimensions["B"].width = 20
+        ws.column_dimensions["C"].width = 30
+
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        back_markup = KeyboardBuilder.create_back_button(CallbackData.BACK_TO_USERS)
+        await query.edit_message_text(
+            f"✅ Экспортировано *{len(users)}* пользователей.",
+            reply_markup=back_markup,
+            parse_mode="Markdown"
         )
-        return USER_MENU
+        await update.effective_chat.send_document(
+            document=output,
+            filename="users.xlsx",
+            caption=f"👥 Список пользователей — {len(users)} шт."
+        )
 
-    # Create a paginated list of users
-    users_per_page = 5
-    context.user_data["users"] = users["users"]
-    context.user_data["current_page"] = 0
-    context.user_data["users_per_page"] = users_per_page
-
-    await send_users_page(update, context)
-    return SELECTING_USER
+    except Exception as e:
+        logger.error(f"Error in export_users_excel: {e}")
+        back_markup = KeyboardBuilder.create_back_button(CallbackData.BACK_TO_USERS)
+        await query.edit_message_text(
+            f"❌ Ошибка при создании Excel файла: {str(e)}",
+            reply_markup=back_markup
+        )
 
 async def send_users_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a page of users"""
