@@ -105,7 +105,8 @@ async def handle_callback_reentry(update: Update, context: ContextTypes.DEFAULT_
         "list_users",
         "list_expired_users",
         "search_user",
-        "export_users_excel",
+        "export_superadmin_excel",
+        "export_dealers_excel",
         "back_to_users",
     }
     user_selection_callbacks = {
