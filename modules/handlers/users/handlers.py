@@ -126,6 +126,7 @@ class Messages:
     CONFIRM_ENABLE = "⚠️ Вы уверены, что хотите включить пользователя?"
     CONFIRM_RESET = "⚠️ Вы уверены, что хотите сбросить трафик пользователя?"
     CONFIRM_REVOKE = "⚠️ Вы уверены, что хотите отозвать подписку пользователя?"
+from modules.api.client import RemnaAPI
 from modules.api.users import UserAPI
 from modules.utils.formatters import (
     format_bytes,
@@ -478,14 +479,10 @@ async def _fetch_encrypted_subscription_link(short_uuid: Optional[str]) -> Optio
     if not short_uuid:
         return None
     macro_url = SUBSCRIPTION_SCRIPT_URL.format(shortUuid=short_uuid, userShortUuid=short_uuid)
-    payload = {"url": macro_url}
-    headers = {"Content-Type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            response = await client.post("https://crypto.happ.su/api.php", json=payload, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            encrypted_link = data.get("encrypted_link")
+        result = await RemnaAPI.post("system/tools/happ/encrypt", {"linkToEncrypt": macro_url})
+        if result and isinstance(result, dict):
+            encrypted_link = result.get("encryptedLink")
             if encrypted_link:
                 return str(encrypted_link)
     except Exception as exc:
@@ -879,7 +876,7 @@ class UserUtils:
         lines = [
             f"👤 *{escape_markdown(user.get('username', 'Без имени'))}*",
             f"🆔 `{user.get('uuid', 'N/A')}`",
-            f"📊 {UserUtils.format_traffic_usage(user.get('usedTrafficBytes', 0), user.get('trafficLimitBytes', 0))}",
+            f"📊 {UserUtils.format_traffic_usage((user.get('userTraffic') or {}).get('usedTrafficBytes', 0) or user.get('usedTrafficBytes', 0), user.get('trafficLimitBytes', 0))}",
             f"📅 {UserUtils.format_expiration_date(user.get('expireAt', ''))}",
             f"📱 {UserUtils.format_user_status(user.get('status', 'UNKNOWN'))}"
         ]
@@ -1494,7 +1491,8 @@ async def send_users_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         message += f"{i+1}. {status_emoji} *{escape_markdown(user['username'])}*\n"
         message += f"   🔑 ID: `{user['shortUuid']}`\n"
-        message += f"   📈 Трафик: {format_bytes(user['usedTrafficBytes'])}/{format_bytes(user['trafficLimitBytes'])}\n"
+        _ut = user.get('userTraffic') or {}
+        message += f"   📈 Трафик: {format_bytes(_ut.get('usedTrafficBytes') or user.get('usedTrafficBytes'))}/{format_bytes(user['trafficLimitBytes'])}\n"
         message += f"   {expire_status} Истекает: {expire_text}\n\n"
 
     # Create navigation buttons
@@ -3681,14 +3679,18 @@ async def show_user_stats(update: Update, context: ContextTypes.DEFAULT_TYPE, uu
     
     # Current usage
     message += f"📈 *Текущее использование*:\n"
-    message += f"  • Использовано: {format_bytes(user['usedTrafficBytes'])}\n"
-    message += f"  • Лимит: {format_bytes(user['trafficLimitBytes'])}\n"
-    
-    if user['trafficLimitBytes'] > 0:
-        percent = (user['usedTrafficBytes'] / user['trafficLimitBytes']) * 100
+    _ut = user.get('userTraffic') or {}
+    used_bytes = _ut.get('usedTrafficBytes') or user.get('usedTrafficBytes') or 0
+    lifetime_bytes = _ut.get('lifetimeUsedTrafficBytes') or user.get('lifetimeUsedTrafficBytes') or 0
+    traffic_limit = user.get('trafficLimitBytes') or 0
+    message += f"  • Использовано: {format_bytes(used_bytes)}\n"
+    message += f"  • Лимит: {format_bytes(traffic_limit)}\n"
+
+    if traffic_limit > 0:
+        percent = (used_bytes / traffic_limit) * 100
         message += f"  • Процент: {percent:.2f}%\n"
-    
-    message += f"  • За все время: {format_bytes(user['lifetimeUsedTrafficBytes'])}\n\n"
+
+    message += f"  • За все время: {format_bytes(lifetime_bytes)}\n\n"
     
     # Usage by node
     if usage:
@@ -3866,7 +3868,7 @@ async def confirm_delete_user(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"👤 **Имя:** `{escape_markdown(user['username'])}`",
             f"🆔 **UUID:** `{user['uuid']}`",
             f"📊 **Статус:** {user['status']}",
-            f"📈 **Использовано трафика:** {format_bytes(user['usedTrafficBytes'])}",
+            f"📈 **Использовано трафика:** {format_bytes((user.get('userTraffic') or {}).get('usedTrafficBytes') or user.get('usedTrafficBytes'))}",
             f"📅 **Дата истечения:** {user.get('expireAt', 'Не указана')[:10]}",
             "",
             "💀 **ЭТО ДЕЙСТВИЕ НЕЛЬЗЯ ОТМЕНИТЬ!**",

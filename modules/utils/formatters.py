@@ -159,8 +159,9 @@ def format_user_details(user):
         else:
             message += f"🔗 *URL подписки:* Не указан\n\n"
         
+        _ut = user.get('userTraffic') or {}
         message += f"📊 *Статус:* {status_emoji} {user['status']}\n"
-        message += f"📈 *Трафик:* {format_bytes(user['usedTrafficBytes'])}/{format_bytes(user['trafficLimitBytes'])}\n"
+        message += f"📈 *Трафик:* {format_bytes(_ut.get('usedTrafficBytes') or user.get('usedTrafficBytes'))}/{format_bytes(user['trafficLimitBytes'])}\n"
         message += f"🔄 *Стратегия сброса:* {user['trafficLimitStrategy']}\n"
         message += f"{expire_status} *Истекает:* {expire_text}\n\n"
         
@@ -211,8 +212,9 @@ def format_user_details(user):
         else:
             message += f"🔗 URL подписки: Не указан\n\n"
         
+        _ut = user.get('userTraffic') or {}
         message += f"📊 Статус: {status_emoji} {user['status']}\n"
-        message += f"📈 Трафик: {format_bytes(user['usedTrafficBytes'])}/{format_bytes(user['trafficLimitBytes'])}\n"
+        message += f"📈 Трафик: {format_bytes(_ut.get('usedTrafficBytes') or user.get('usedTrafficBytes'))}/{format_bytes(user['trafficLimitBytes'])}\n"
         message += f"🔄 Стратегия сброса: {user['trafficLimitStrategy']}\n"
         message += f"{expire_status} Истекает: {expire_text}\n\n"
         
@@ -253,7 +255,8 @@ def format_user_details_safe(user):
     subscription_uuid = escape_markdown(user.get("subscriptionUuid", "")) if user.get("subscriptionUuid") else None
     traffic_strategy = escape_markdown(user.get("trafficLimitStrategy", "")) if user.get("trafficLimitStrategy") else "—"
     status_value = escape_markdown(user.get("status", "UNKNOWN"))
-    online_raw = user.get("onlineAt")
+    user_traffic = user.get('userTraffic') or {}
+    online_raw = user_traffic.get("onlineAt") or user.get("onlineAt")
 
     try:
         expire_raw = user.get("expireAt")
@@ -283,7 +286,8 @@ def format_user_details_safe(user):
     else:
         message += f"🔗 URL подписки: Не указан\n\n"
 
-    used_traffic = format_bytes(user.get("usedTrafficBytes"))
+    user_traffic = user.get('userTraffic') or {}
+    used_traffic = format_bytes(user_traffic.get("usedTrafficBytes") or user.get("usedTrafficBytes"))
     traffic_limit = format_bytes(user.get("trafficLimitBytes"))
     message += f"📊 Статус: {status_emoji} {status_value}\n"
     message += f"📈 Трафик: {used_traffic}/{traffic_limit}\n"

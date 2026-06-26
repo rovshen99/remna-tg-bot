@@ -268,7 +268,8 @@ async def get_system_stats():
                             user_stats[status] += 1
                         
                         if DASHBOARD_SHOW_TRAFFIC_STATS:
-                            traffic_bytes = user.get('usedTrafficBytes', 0)
+                            _ut = user.get('userTraffic') or {}
+                            traffic_bytes = _ut.get('usedTrafficBytes') or user.get('usedTrafficBytes', 0)
                             if isinstance(traffic_bytes, (int, float)):
                                 total_traffic += traffic_bytes
                             elif isinstance(traffic_bytes, str) and traffic_bytes.isdigit():
