@@ -64,7 +64,7 @@ class NodeAPI:
             "start": start_date,
             "end": end_date
         }
-        return await RemnaAPI.get(f"nodes/usage/{uuid}/users/range", params)
+        return await RemnaAPI.get(f"bandwidth-stats/nodes/{uuid}/users", params)
     
     @staticmethod
     async def get_nodes_realtime_usage():
@@ -72,7 +72,7 @@ class NodeAPI:
         logger.info("Requesting nodes realtime usage from API")
         
         # Try the primary endpoint first
-        result = await RemnaAPI.get("nodes/usage/realtime")
+        result = await RemnaAPI.get("system/nodes/metrics")
         logger.info(f"Nodes realtime usage API response: {result}")
         
         # If empty, try alternative endpoints or fallback to all nodes info
@@ -110,7 +110,7 @@ class NodeAPI:
             "start": start_date,
             "end": end_date
         }
-        return await RemnaAPI.get("nodes/usage/range", params)
+        return await RemnaAPI.get("bandwidth-stats/nodes", params)
     
     @staticmethod
     async def add_inbound_to_all_nodes(inbound_uuid):
@@ -149,7 +149,7 @@ class NodeAPI:
                     'uptime': node.get('uptime', 'N/A'),
                     'id': node.get('id'),
                     'address': node.get('address'),
-                    'usage_coefficient': node.get('usageCoefficient', 1.0),
+                    'usage_coefficient': node.get('consumptionMultiplier', 1.0),
                     'version': node.get('version', 'Unknown'),
                     'last_connected_at': node.get('lastConnectedAt')
                 })

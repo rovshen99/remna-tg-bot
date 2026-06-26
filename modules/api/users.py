@@ -184,14 +184,14 @@ class UserAPI:
     async def create_user(user_data):
         """Create a new user"""
         # Validate required fields
-        required_fields = ["username", "trafficLimitStrategy", "expireAt"]
+        required_fields = ["username", "expireAt"]
         for field in required_fields:
             if field not in user_data:
                 logger.error(f"Missing required field: {field}")
                 return None
-        
+
         # Validate username format
-        if not re.match(r"^[a-zA-Z0-9_-]{6,34}$", user_data["username"]):
+        if not re.match(r"^[a-zA-Z0-9_-]{3,36}$", user_data["username"]):
             logger.error(f"Invalid username format: {user_data['username']}")
             return None
             
@@ -206,11 +206,12 @@ class UserAPI:
                 logger.warning(f"Changing trafficLimitStrategy to NO_RESET because hwidDeviceLimit is set to {user_data['hwidDeviceLimit']}")
                 user_data["trafficLimitStrategy"] = "NO_RESET"
         
-        # Validate traffic limit strategy
-        valid_strategies = ["NO_RESET", "DAY", "WEEK", "MONTH"]
-        logger.info(f"Traffic limit strategy value: '{user_data.get('trafficLimitStrategy')}'")
-        if user_data["trafficLimitStrategy"] not in valid_strategies:
-            logger.error(f"Invalid traffic limit strategy: '{user_data['trafficLimitStrategy']}'")
+        # Validate traffic limit strategy (optional, API defaults to NO_RESET)
+        valid_strategies = ["NO_RESET", "DAY", "WEEK", "MONTH", "MONTH_ROLLING"]
+        strategy = user_data.get("trafficLimitStrategy")
+        logger.info(f"Traffic limit strategy value: '{strategy}'")
+        if strategy is not None and strategy not in valid_strategies:
+            logger.error(f"Invalid traffic limit strategy: '{strategy}'")
             return None
         
         # Validate numeric fields
@@ -287,7 +288,7 @@ class UserAPI:
             "start": start_date,
             "end": end_date
         }
-        return await RemnaAPI.get(f"users/stats/usage/{uuid}/range", params)
+        return await RemnaAPI.get(f"bandwidth-stats/users/{uuid}", params)
     
     @staticmethod
     async def get_user_hwid_devices(uuid):
@@ -416,8 +417,9 @@ class UserAPI:
                     if status in stats:
                         stats[status] += 1
                     
-                    # Calculate traffic
-                    traffic_used = user.get('trafficUsed', 0)
+                    # Calculate traffic (new API: userTraffic.usedTrafficBytes)
+                    user_traffic = user.get('userTraffic') or {}
+                    traffic_used = user_traffic.get('usedTrafficBytes', 0)
                     if isinstance(traffic_used, (int, float)):
                         total_traffic += traffic_used
             

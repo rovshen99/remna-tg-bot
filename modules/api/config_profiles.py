@@ -39,18 +39,7 @@ class ConfigProfileAPI:
 
     @staticmethod
     async def get_profile_users(profile_uuid: str) -> List[Dict[str, Any]]:
-        """Get users for a specific config profile (if supported by API)."""
-        result = await RemnaAPI.get(f"config-profiles/{profile_uuid}/users")
-        # Expected { response: { total, users: [...] } } or direct { users: [...] }
-        if isinstance(result, dict):
-            if "users" in result:
-                return result.get("users") or []
-            resp = result.get("response")
-            if isinstance(resp, dict) and "users" in resp:
-                return resp.get("users") or []
-            return []
-        if isinstance(result, list):
-            return result
+        """Not available in API v2.7.4 — endpoint was removed."""
         return []
 
 
