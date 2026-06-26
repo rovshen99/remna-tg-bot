@@ -247,7 +247,7 @@ def format_user_details(user):
         
         return message
 
-def format_user_details_safe(user):
+def format_user_details_safe(user, crypto_link: str = ''):
     """Format user details for display with properly escaped Markdown."""
     username = escape_markdown(user.get("username", ""))
     uuid_value = escape_markdown(user.get("uuid", ""))
@@ -280,11 +280,11 @@ def format_user_details_safe(user):
     if subscription_uuid:
         message += f"📝 UUID подписки: {subscription_uuid}\n\n"
 
-    crypto_link = user.get('happ', {}).get('cryptoLink', '')
-    if crypto_link:
-        message += f"🔗 URL подписки:\n`{crypto_link}`\n\n"
+    link_to_show = crypto_link or user.get('subscriptionUrl', '')
+    if link_to_show:
+        message += f"🔐 Happ:\n`{link_to_show}`\n\n"
     else:
-        message += f"🔗 URL подписки: Не указан\n\n"
+        message += f"🔐 Happ: Не указан\n\n"
 
     user_traffic = user.get('userTraffic') or {}
     used_traffic = format_bytes(user_traffic.get("usedTrafficBytes") or user.get("usedTrafficBytes"))
