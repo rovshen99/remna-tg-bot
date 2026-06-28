@@ -475,18 +475,17 @@ def _build_qr_code_payload(data: str) -> BytesIO:
     return buffer
 
 
-async def _fetch_encrypted_subscription_link(short_uuid: Optional[str]) -> Optional[str]:
-    if not short_uuid:
+async def _fetch_encrypted_subscription_link(subscription_url: Optional[str]) -> Optional[str]:
+    if not subscription_url:
         return None
-    macro_url = SUBSCRIPTION_SCRIPT_URL.format(shortUuid=short_uuid, userShortUuid=short_uuid)
     try:
-        result = await RemnaAPI.post("system/tools/happ/encrypt", {"linkToEncrypt": macro_url})
+        result = await RemnaAPI.post("system/tools/happ/encrypt", {"subscriptionUrl": subscription_url})
         if result and isinstance(result, dict):
             encrypted_link = result.get("encryptedLink")
             if encrypted_link:
                 return str(encrypted_link)
     except Exception as exc:
-        logger.error("Failed to fetch encrypted subscription link for %s: %s", short_uuid, exc)
+        logger.error("Failed to fetch encrypted subscription link for %s: %s", subscription_url, exc)
     return None
 
 
@@ -3470,7 +3469,7 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     drive_link = f"https://drive.google.com/uc?id={temp_file_id}&export=download"
 
             if short_uuid and created_uuid:
-                encrypted_link = await _fetch_encrypted_subscription_link(short_uuid)
+                encrypted_link = await _fetch_encrypted_subscription_link(result.get('subscriptionUrl'))
                 if not encrypted_link:
                     logger.warning("Encrypted link request returned nothing for short UUID %s", short_uuid)
 
