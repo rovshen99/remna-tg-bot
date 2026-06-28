@@ -1652,7 +1652,7 @@ async def show_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         return USER_MENU
 
     # Получаем зашифрованную happ-ссылку через панельный эндпоинт
-    crypto_link = await _fetch_encrypted_subscription_link(user.get('shortUuid')) or ''
+    crypto_link = await _fetch_encrypted_subscription_link(user.get('subscriptionUrl')) or ''
 
     # Формируем безопасное сообщение без Markdown
     try:

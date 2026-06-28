@@ -281,11 +281,10 @@ def format_user_details_safe(user, crypto_link: str = ''):
     if subscription_uuid:
         message += f"📝 UUID подписки: {subscription_uuid}\n\n"
 
-    link_to_show = crypto_link or 'Обновите данные'
-    if link_to_show:
-        message += f"🔐 Happ:\n`{link_to_show}`\n\n"
+    if crypto_link:
+        message += f"🔐 Happ:\n`{crypto_link}`\n\n"
     else:
-        message += f"🔐 Happ: Не указан\n\n"
+        message += f"🔐 Happ: Обновите данные\n\n"
 
     user_traffic = user.get('userTraffic') or {}
     used_traffic = format_bytes(user_traffic.get("usedTrafficBytes") or user.get("usedTrafficBytes"))
