@@ -477,13 +477,19 @@ def _build_qr_code_payload(data: str) -> BytesIO:
 
 async def _fetch_encrypted_subscription_link(subscription_url: Optional[str]) -> Optional[str]:
     if not subscription_url:
+        logger.warning("happ/encrypt: subscriptionUrl is empty/None, skipping")
         return None
     try:
+        logger.info("happ/encrypt: posting with subscriptionUrl=%s", subscription_url)
         result = await RemnaAPI.post("system/tools/happ/encrypt", {"subscriptionUrl": subscription_url})
+        logger.info("happ/encrypt: raw result=%s", result)
         if result and isinstance(result, dict):
             encrypted_link = result.get("encryptedLink")
             if encrypted_link:
                 return str(encrypted_link)
+            logger.warning("happ/encrypt: encryptedLink not found in result keys: %s", list(result.keys()))
+        else:
+            logger.warning("happ/encrypt: result is None or not a dict: %s", result)
     except Exception as exc:
         logger.error("Failed to fetch encrypted subscription link for %s: %s", subscription_url, exc)
     return None
