@@ -481,7 +481,7 @@ async def _fetch_encrypted_subscription_link(subscription_url: Optional[str]) ->
         return None
     try:
         logger.info("happ/encrypt: posting with subscriptionUrl=%s", subscription_url)
-        result = await RemnaAPI.post("system/tools/happ/encrypt", {"subscriptionUrl": subscription_url})
+        result = await RemnaAPI.post("system/tools/happ/encrypt", {"linkToEncrypt": subscription_url})
         logger.info("happ/encrypt: raw result=%s", result)
         if result and isinstance(result, dict):
             encrypted_link = result.get("encryptedLink")
