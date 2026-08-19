@@ -324,8 +324,27 @@ class UserAPI:
             "userUuid": uuid,
             "hwid": hwid
         }
-        
+
         return await RemnaAPI.post("hwid/devices/delete", data)
+
+    @staticmethod
+    async def delete_all_user_hwid_devices(uuid):
+        """Delete all HWID devices bound to a user (no bulk endpoint on the panel, so delete one by one)"""
+        devices = await UserAPI.get_user_hwid_devices(uuid) or []
+        total = len(devices)
+        deleted = 0
+
+        for device in devices:
+            hwid = device.get("hwid")
+            if not hwid:
+                continue
+            result = await UserAPI.delete_user_hwid_device(uuid, hwid)
+            if result:
+                deleted += 1
+            else:
+                logger.error(f"Failed to delete HWID device {hwid} for user {uuid}")
+
+        return {"total": total, "deleted": deleted}
     
     @staticmethod
     async def search_users_by_partial_name(partial_name):

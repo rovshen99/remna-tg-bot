@@ -234,7 +234,8 @@ class SelectionHelper:
                 [
                     InlineKeyboardButton("📊 Сбросить трафик", callback_data=f"{action_prefix}_reset_traffic_{user_uuid}"),
                     InlineKeyboardButton("🔐 Отозвать подписку", callback_data=f"{action_prefix}_revoke_{user_uuid}")
-                ]
+                ],
+                [InlineKeyboardButton("📵 Сбросить все HWID", callback_data=f"{action_prefix}_hwidreset_{user_uuid}")]
             ])
         else:
             rows.append([InlineKeyboardButton("🔄 Обновить данные", callback_data=f"{action_prefix}_refresh_{user_uuid}")])

@@ -1810,7 +1810,7 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
         action_parts = data.split("_")
         if len(action_parts) >= 4:
             action = action_parts[2]
-            admin_only_actions = {"edit", "disable", "enable", "reset", "revoke", "delete", "hwid", "extend"}
+            admin_only_actions = {"edit", "disable", "enable", "reset", "revoke", "delete", "hwid", "hwidreset", "extend"}
             if not has_user_access and action in admin_only_actions:
                 await query.answer(INSUFFICIENT_PERMISSIONS_MESSAGE, show_alert=True)
                 return SELECTING_USER
@@ -1937,6 +1937,37 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 
                 await query.edit_message_text(
                     f"⚠️ Вы уверены, что хотите отозвать подписку пользователя?\n\nUUID: `{uuid}`",
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
+                )
+                return CONFIRM_ACTION
+            elif action == "hwidreset":
+                context.user_data["action"] = "hwidreset"
+                context.user_data["uuid"] = uuid
+
+                devices = await UserAPI.get_user_hwid_devices(uuid) or []
+                count = len(devices)
+
+                if count == 0:
+                    keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"view_{uuid}")]]
+                    await query.edit_message_text(
+                        f"ℹ️ У пользователя нет привязанных устройств HWID.\n\nUUID: `{uuid}`",
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode="Markdown"
+                    )
+                    return SELECTING_USER
+
+                keyboard = [
+                    [
+                        InlineKeyboardButton("✅ Да, сбросить все", callback_data="confirm_action"),
+                        InlineKeyboardButton("❌ Отмена", callback_data=f"view_{uuid}")
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
+                await query.edit_message_text(
+                    f"⚠️ Вы уверены, что хотите сбросить ВСЕ устройства HWID ({count} шт.) пользователя?\n\n"
+                    f"Это действие нельзя отменить.\n\nUUID: `{uuid}`",
                     reply_markup=reply_markup,
                     parse_mode="Markdown"
                 )
@@ -2090,7 +2121,29 @@ async def handle_action_confirmation(update: Update, context: ContextTypes.DEFAU
         if not action or not uuid:
             await query.edit_message_text("❌ Ошибка: действие или UUID не найдены.")
             return SELECTING_USER
-        
+
+        if action == "hwidreset":
+            summary = await UserAPI.delete_all_user_hwid_devices(uuid)
+            total = summary.get("total", 0)
+            deleted = summary.get("deleted", 0)
+
+            user_cache.invalidate_user(uuid)
+            user_cache.invalidate_all_users()
+
+            keyboard = [
+                [InlineKeyboardButton("👁️ Просмотр пользователя", callback_data=f"view_{uuid}")],
+                [InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_list")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            if deleted == total:
+                text = f"✅ Все устройства HWID ({deleted}) удалены.\n\nUUID: `{uuid}`"
+            else:
+                text = f"⚠️ Удалено {deleted} из {total} устройств HWID. Часть устройств удалить не удалось.\n\nUUID: `{uuid}`"
+
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+            return SELECTING_USER
+
         result = None
         action_text = ""
         
