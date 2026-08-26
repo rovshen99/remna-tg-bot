@@ -1946,8 +1946,12 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 context.user_data["uuid"] = uuid
 
                 hwid_payload = await UserAPI.get_user_hwid_devices(uuid) or {}
-                devices = hwid_payload.get("devices", []) if isinstance(hwid_payload, dict) else (hwid_payload or [])
-                count = len(devices)
+                if isinstance(hwid_payload, dict):
+                    devices = hwid_payload.get("devices", [])
+                    count = hwid_payload.get("total", len(devices))
+                else:
+                    devices = hwid_payload or []
+                    count = len(devices)
 
                 if count == 0:
                     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"view_{uuid}")]]
