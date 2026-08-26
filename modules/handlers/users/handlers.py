@@ -1945,7 +1945,8 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 context.user_data["action"] = "hwidreset"
                 context.user_data["uuid"] = uuid
 
-                devices = await UserAPI.get_user_hwid_devices(uuid) or []
+                hwid_payload = await UserAPI.get_user_hwid_devices(uuid) or {}
+                devices = hwid_payload.get("devices", []) if isinstance(hwid_payload, dict) else (hwid_payload or [])
                 count = len(devices)
 
                 if count == 0:
@@ -3661,7 +3662,8 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def show_user_hwid_devices(update: Update, context: ContextTypes.DEFAULT_TYPE, uuid: str):
     """Show user HWID devices"""
-    devices = await UserAPI.get_user_hwid_devices(uuid)
+    hwid_payload = await UserAPI.get_user_hwid_devices(uuid) or {}
+    devices = hwid_payload.get("devices", []) if isinstance(hwid_payload, dict) else (hwid_payload or [])
     user = context.user_data.get("current_user") or await UserAPI.get_user_by_uuid(uuid)
     
     if not devices:
