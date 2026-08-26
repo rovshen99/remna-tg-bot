@@ -1751,7 +1751,12 @@ async def send_user_qrcode(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     #         await query.answer("❌ В описании пользователя нет ссылки для QR-кода.", show_alert=True)
     #     return SELECTING_USER
 
-    crypto_link = user.get('happ', {}).get('cryptoLink', '')
+    crypto_link = await _fetch_encrypted_subscription_link(user.get('subscriptionUrl')) or ''
+
+    if not crypto_link:
+        if query:
+            await query.answer("❌ Не удалось получить ссылку для QR-кода.", show_alert=True)
+        return SELECTING_USER
 
     qr_stream = _build_qr_code_payload(crypto_link)
     username = escape_markdown(user.get("username", ""))
@@ -3571,7 +3576,7 @@ async def finish_create_user(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # elif not link_for_qr:
         #     link_for_qr = drive_link or encrypted_link
 
-        crypto_link = result.get('happ', {}).get('cryptoLink', '')
+        crypto_link = encrypted_link or ''
 
         for key in ("create_user", "create_user_fields", "current_field_index", "using_template", "search_type", "waiting_for"):
             context.user_data.pop(key, None)
