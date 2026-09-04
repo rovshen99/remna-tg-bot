@@ -117,6 +117,11 @@ GOOGLE_OAUTH_CLIENT_SECRET_FILE = _resolve_path(os.getenv("GOOGLE_OAUTH_CLIENT_S
 
 GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID = os.getenv("GOOGLE_DRIVE_SUBSCRIPTIONS_FOLDER_ID")
 SUBSCRIPTION_DRIVE_LINK = os.getenv("SUBSCRIPTION_DRIVE_LINK", "false").lower() == "true"
+# Which subscription link(s) to show in the user detail view:
+# "crypto" (default) = Happ crypto link only, "regular" = subscriptionUrl only, "both" = show both
+SUBSCRIPTION_LINK_MODE = os.getenv("SUBSCRIPTION_LINK_MODE", "crypto").strip().lower()
+if SUBSCRIPTION_LINK_MODE not in ("crypto", "regular", "both"):
+    SUBSCRIPTION_LINK_MODE = "crypto"
 SUBSCRIPTION_SCRIPT_URL = os.getenv(
     "SUBSCRIPTION_SCRIPT_URL",
     "https://script.google.com/macros/s/AKfycbwIMaOuOjlvfqBN7tLevued0dqMZXrSkGIXBry9YSHxFJkH2Ewbx2Rl7ACEV5SiF9iy/exec?id={shortUuid}",

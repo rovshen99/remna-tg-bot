@@ -3,7 +3,7 @@ import logging
 import re
 from typing import Any, Dict, Optional
 
-from modules.config import SUBSCRIPTION_DRIVE_LINK
+from modules.config import SUBSCRIPTION_DRIVE_LINK, SUBSCRIPTION_LINK_MODE
 
 logger = logging.getLogger(__name__)
 
@@ -278,10 +278,20 @@ def format_user_details_safe(user):
         message += f"📝 UUID подписки: {subscription_uuid}\n\n"
 
     crypto_link = user.get('happ', {}).get('cryptoLink', '')
-    if crypto_link:
-        message += f"🔗 URL подписки:\n`{crypto_link}`\n\n"
+    regular_link = user.get('subscriptionUrl', '')
+    if SUBSCRIPTION_LINK_MODE == "both":
+        if crypto_link:
+            message += f"🔗 URL подписки (Happ):\n`{crypto_link}`\n\n"
+        if regular_link:
+            message += f"🔗 URL подписки (обычная):\n`{regular_link}`\n\n"
+        if not crypto_link and not regular_link:
+            message += f"🔗 URL подписки: Не указан\n\n"
     else:
-        message += f"🔗 URL подписки: Не указан\n\n"
+        subscription_link = crypto_link if SUBSCRIPTION_LINK_MODE == "crypto" else regular_link
+        if subscription_link:
+            message += f"🔗 URL подписки:\n`{subscription_link}`\n\n"
+        else:
+            message += f"🔗 URL подписки: Не указан\n\n"
 
     used_traffic = format_bytes(user.get("usedTrafficBytes"))
     traffic_limit = format_bytes(user.get("trafficLimitBytes"))
