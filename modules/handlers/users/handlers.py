@@ -29,6 +29,7 @@ from modules.config import (
     ACTIVE_INTERNAL_SQUADS,
     CREATE_USER_EXCLUDED_FIELDS_SET,
     SUBSCRIPTION_DRIVE_LINK,
+    SUBSCRIPTION_LINK_MODE,
     SUBSCRIPTION_SCRIPT_URL,
     HWID_DEVICE_LIMIT_PRESETS,
     EXPORT_EXCEL_ENABLED,
@@ -1726,8 +1727,13 @@ async def show_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     return SELECTING_USER
 
 
-async def send_user_qrcode(update: Update, context: ContextTypes.DEFAULT_TYPE, uuid: str):
-    """Generate and send QR code built from the user's description link."""
+async def send_user_qrcode(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    uuid: str,
+    link_type: Optional[str] = None,
+):
+    """Generate and send a QR code for the subscription link selected by the mode."""
     query = update.callback_query
     user = context.user_data.get("current_user")
 
@@ -1739,17 +1745,57 @@ async def send_user_qrcode(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             await query.answer("❌ Пользователь не найден.", show_alert=True)
         return SELECTING_USER
 
-    # link = resolve_description_link(user.get("description"))
-    # if not link:
-    #     if query:
-    #         await query.answer("❌ В описании пользователя нет ссылки для QR-кода.", show_alert=True)
-    #     return SELECTING_USER
-
     crypto_link = user.get('happ', {}).get('cryptoLink', '')
+    regular_link = user.get('subscriptionUrl', '')
 
-    qr_stream = _build_qr_code_payload(crypto_link)
+    if SUBSCRIPTION_LINK_MODE == "both" and link_type is None:
+        choices = []
+        if crypto_link:
+            choices.append([
+                InlineKeyboardButton(
+                    "🔳 Happ-ссылка",
+                    callback_data=f"user_action_qrcode_crypto_{uuid}",
+                )
+            ])
+        if regular_link:
+            choices.append([
+                InlineKeyboardButton(
+                    "🔳 Обычная ссылка",
+                    callback_data=f"user_action_qrcode_regular_{uuid}",
+                )
+            ])
+
+        if not choices:
+            if query:
+                await query.answer("❌ У пользователя нет ссылки для QR-кода.", show_alert=True)
+            return SELECTING_USER
+
+        choices.append([InlineKeyboardButton("🔙 Назад к пользователю", callback_data=f"view_{uuid}")])
+        await query.edit_message_text(
+            "Выберите ссылку для QR-кода:",
+            reply_markup=InlineKeyboardMarkup(choices),
+        )
+        return SELECTING_USER
+
+    selected_link_type = link_type or SUBSCRIPTION_LINK_MODE
+    if selected_link_type == "crypto":
+        subscription_link = crypto_link
+        link_label = "Happ"
+    else:
+        subscription_link = regular_link
+        link_label = "обычной"
+
+    if not subscription_link:
+        if query:
+            await query.answer("❌ У пользователя нет выбранной ссылки для QR-кода.", show_alert=True)
+        return SELECTING_USER
+
+    qr_stream = _build_qr_code_payload(subscription_link)
     username = escape_markdown(user.get("username", ""))
-    caption_lines = [f"🔳 QR-код для `{username}`", f"`{escape_markdown(crypto_link)}`"]
+    caption_lines = [
+        f"🔳 QR-код для `{username}` ({link_label} ссылки)",
+        f"`{escape_markdown(subscription_link)}`",
+    ]
     caption = "\n".join(caption_lines)
     back_markup = InlineKeyboardMarkup(
         [[InlineKeyboardButton("🔙 Назад к пользователю", callback_data=f"view_{uuid}")]]
@@ -1936,7 +1982,9 @@ async def handle_user_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 )
                 return CONFIRM_ACTION
             elif action == "qrcode":
-                return await send_user_qrcode(update, context, uuid)
+                qr_link_type = action_parts[3] if action_parts[3] in {"crypto", "regular"} else None
+                qr_uuid = "_".join(action_parts[4:]) if qr_link_type else uuid
+                return await send_user_qrcode(update, context, qr_uuid, qr_link_type)
             elif action == "delete":
                 # Confirm user deletion with extra protection
                 next_state = await confirm_delete_user(update, context, uuid)
